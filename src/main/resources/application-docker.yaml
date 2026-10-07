@@ -3,7 +3,7 @@ spring:
     activate:
       on-profile: docker
   datasource:
-    url: jdbc:postgresql://postgres:5432/ms_execution_db
+    url: jdbc:postgresql://postgres:5432/ms_ofisy_execution_db
   flyway:
     enabled: true
   jpa:
