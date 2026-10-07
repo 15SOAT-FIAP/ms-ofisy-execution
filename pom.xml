@@ -9,7 +9,7 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>br.com.ofisy</groupId>
-	<artifactId>ms-execution</artifactId>
+	<artifactId>ms-ofisy-execution</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name/>
 	<description/>
@@ -168,7 +168,7 @@
 				<configuration>
 					<excludes>
 						<exclude>**/config/**</exclude>
-						<exclude>**/MsExecutionApplication.class</exclude>
+						<exclude>**/MsOfisyExecutionApplication.class</exclude>
 					</excludes>
 				</configuration>
 				<executions>

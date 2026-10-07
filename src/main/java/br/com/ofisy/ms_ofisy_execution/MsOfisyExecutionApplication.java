@@ -1,13 +1,13 @@
-package br.com.ofisy.ms_execution;
+package br.com.ofisy.ms_ofisy_execution;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class MsExecutionApplication {
+public class MsOfisyExecutionApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(MsExecutionApplication.class, args);
+		SpringApplication.run(MsOfisyExecutionApplication.class, args);
 	}
 
 }
