@@ -1,7 +1,7 @@
 services:
   postgres:
     image: postgres:16
-    container_name: ms-execution-db
+    container_name: ms-ofisy-execution-db
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -18,7 +18,7 @@ services:
 
   app:
     build: .
-    container_name: ms-execution-app
+    container_name: ms-ofisy-execution-app
     depends_on:
       postgres:
         condition: service_healthy
