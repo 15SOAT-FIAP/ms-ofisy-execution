@@ -1,0 +1,75 @@
+package br.com.ofisy.ms_ofisy_execution.domain;
+
+import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+
+class ServiceOrderExecutionStatusTest {
+
+    @Test
+    void shouldHaveFourStatusValues() {
+        var values = ServiceOrderExecutionStatus.values();
+        assertThat(values).hasSize(4);
+    }
+
+    @Test
+    void shouldHaveAllExpectedStatuses() {
+        var values = ServiceOrderExecutionStatus.values();
+        assertThat(values).contains(
+                ServiceOrderExecutionStatus.PENDING,
+                ServiceOrderExecutionStatus.IN_PROGRESS,
+                ServiceOrderExecutionStatus.COMPLETED,
+                ServiceOrderExecutionStatus.CANCELLED
+        );
+    }
+
+    @Test
+    void shouldParseStatusFromString() {
+        assertThat(ServiceOrderExecutionStatus.valueOf("PENDING"))
+                .isEqualTo(ServiceOrderExecutionStatus.PENDING);
+        assertThat(ServiceOrderExecutionStatus.valueOf("COMPLETED"))
+                .isEqualTo(ServiceOrderExecutionStatus.COMPLETED);
+        assertThat(ServiceOrderExecutionStatus.valueOf("CANCELLED"))
+                .isEqualTo(ServiceOrderExecutionStatus.CANCELLED);
+        assertThat(ServiceOrderExecutionStatus.valueOf("IN_PROGRESS"))
+                .isEqualTo(ServiceOrderExecutionStatus.IN_PROGRESS);
+    }
+
+    @Test
+    void shouldConvertToString() {
+        assertThat(ServiceOrderExecutionStatus.PENDING.toString()).hasToString("PENDING");
+        assertThat(ServiceOrderExecutionStatus.COMPLETED.toString()).hasToString("COMPLETED");
+        assertThat(ServiceOrderExecutionStatus.CANCELLED.toString()).hasToString("CANCELLED");
+        assertThat(ServiceOrderExecutionStatus.IN_PROGRESS.toString()).hasToString("IN_PROGRESS");
+    }
+
+    @Test
+    void pendingShouldAllowInProgressAndCancelled() {
+        assertThat(ServiceOrderExecutionStatus.PENDING.canTransitionTo(ServiceOrderExecutionStatus.IN_PROGRESS)).isTrue();
+        assertThat(ServiceOrderExecutionStatus.PENDING.canTransitionTo(ServiceOrderExecutionStatus.CANCELLED)).isTrue();
+        assertThat(ServiceOrderExecutionStatus.PENDING.canTransitionTo(ServiceOrderExecutionStatus.COMPLETED)).isFalse();
+        assertThat(ServiceOrderExecutionStatus.PENDING.canTransitionTo(ServiceOrderExecutionStatus.PENDING)).isFalse();
+    }
+
+    @Test
+    void inProgressShouldAllowCompletedAndCancelled() {
+        assertThat(ServiceOrderExecutionStatus.IN_PROGRESS.canTransitionTo(ServiceOrderExecutionStatus.COMPLETED)).isTrue();
+        assertThat(ServiceOrderExecutionStatus.IN_PROGRESS.canTransitionTo(ServiceOrderExecutionStatus.CANCELLED)).isTrue();
+        assertThat(ServiceOrderExecutionStatus.IN_PROGRESS.canTransitionTo(ServiceOrderExecutionStatus.PENDING)).isFalse();
+        assertThat(ServiceOrderExecutionStatus.IN_PROGRESS.canTransitionTo(ServiceOrderExecutionStatus.IN_PROGRESS)).isFalse();
+    }
+
+    @Test
+    void completedShouldBeTerminal() {
+        for (var next : ServiceOrderExecutionStatus.values()) {
+            assertThat(ServiceOrderExecutionStatus.COMPLETED.canTransitionTo(next)).isFalse();
+        }
+    }
+
+    @Test
+    void cancelledShouldBeTerminal() {
+        for (var next : ServiceOrderExecutionStatus.values()) {
+            assertThat(ServiceOrderExecutionStatus.CANCELLED.canTransitionTo(next)).isFalse();
+        }
+    }
+}
