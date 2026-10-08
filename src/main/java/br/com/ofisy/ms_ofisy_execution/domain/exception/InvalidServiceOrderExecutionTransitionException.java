@@ -6,6 +6,6 @@ public class InvalidServiceOrderExecutionTransitionException extends RuntimeExce
 
     public InvalidServiceOrderExecutionTransitionException(ServiceOrderExecutionStatus from,
                                                            ServiceOrderExecutionStatus to) {
-        super("Nao pode alterar o status da execucao de " + from + " para " + to);
+        super("Não pode alterar o status da execução de " + from + " para " + to);
     }
 }
