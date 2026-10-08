@@ -4,6 +4,7 @@ import br.com.ofisy.ms_ofisy_execution.domain.exception.InvalidServiceOrderExecu
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
@@ -45,6 +46,32 @@ class ServiceOrderExecutionTest {
 
             assertThat(result.getCreatedAt()).isNotNull();
             assertThat(result.getUpdatedAt()).isNotNull();
+        }
+    }
+
+    @Nested
+    class ReconstructServiceOrderExecution {
+        @Test
+        void shouldRestoreAllFieldsFromPersistedData() {
+            var id = createRandomId();
+            var serviceCatalogId = createRandomId();
+            var serviceOrderId = createRandomId();
+            var createdAt = LocalDateTime.of(2026, 1, 10, 8, 0);
+            var updatedAt = LocalDateTime.of(2026, 1, 10, 12, 0);
+            var startedAt = LocalDateTime.of(2026, 1, 10, 9, 0);
+            var finishedAt = LocalDateTime.of(2026, 1, 10, 12, 0);
+
+            var result = ServiceOrderExecution.reconstruct(id, serviceCatalogId, serviceOrderId,
+                    ServiceOrderExecutionStatus.COMPLETED, createdAt, updatedAt, startedAt, finishedAt);
+
+            assertThat(result.getId()).isEqualTo(id);
+            assertThat(result.getServiceCatalogId()).isEqualTo(serviceCatalogId);
+            assertThat(result.getServiceOrderId()).isEqualTo(serviceOrderId);
+            assertThat(result.getStatus()).isEqualTo(ServiceOrderExecutionStatus.COMPLETED);
+            assertThat(result.getCreatedAt()).isEqualTo(createdAt);
+            assertThat(result.getUpdatedAt()).isEqualTo(updatedAt);
+            assertThat(result.getStartedAt()).isEqualTo(startedAt);
+            assertThat(result.getFinishedAt()).isEqualTo(finishedAt);
         }
     }
 
