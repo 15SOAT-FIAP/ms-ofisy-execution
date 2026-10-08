@@ -1,8 +1,10 @@
 package br.com.ofisy.ms_ofisy_execution.domain;
 
+import br.com.ofisy.ms_ofisy_execution.domain.exception.InvalidServiceOrderExecutionStatusException;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 class ServiceOrderExecutionStatusTest {
 
@@ -33,6 +35,23 @@ class ServiceOrderExecutionStatusTest {
                 .isEqualTo(ServiceOrderExecutionStatus.CANCELLED);
         assertThat(ServiceOrderExecutionStatus.valueOf("IN_PROGRESS"))
                 .isEqualTo(ServiceOrderExecutionStatus.IN_PROGRESS);
+    }
+
+    @Test
+    void fromShouldParseStatusIgnoringCase() {
+        assertThat(ServiceOrderExecutionStatus.from("pending"))
+                .isEqualTo(ServiceOrderExecutionStatus.PENDING);
+        assertThat(ServiceOrderExecutionStatus.from("In_Progress"))
+                .isEqualTo(ServiceOrderExecutionStatus.IN_PROGRESS);
+        assertThat(ServiceOrderExecutionStatus.from("COMPLETED"))
+                .isEqualTo(ServiceOrderExecutionStatus.COMPLETED);
+    }
+
+    @Test
+    void fromShouldRejectUnknownStatus() {
+        assertThatThrownBy(() -> ServiceOrderExecutionStatus.from("finished"))
+                .isInstanceOf(InvalidServiceOrderExecutionStatusException.class)
+                .hasMessageContaining("finished");
     }
 
     @Test
