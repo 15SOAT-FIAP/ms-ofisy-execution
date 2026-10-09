@@ -3,9 +3,9 @@ package br.com.ofisy.ms_ofisy_execution.application.cancel;
 import br.com.ofisy.ms_ofisy_execution.application.exception.ServiceOrderExecutionNotFoundException;
 import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecution;
 import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecutionRepository;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
