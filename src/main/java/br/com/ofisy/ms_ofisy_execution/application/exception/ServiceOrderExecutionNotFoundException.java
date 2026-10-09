@@ -5,6 +5,6 @@ import java.util.UUID;
 public class ServiceOrderExecutionNotFoundException extends RuntimeException {
 
     public ServiceOrderExecutionNotFoundException(UUID id) {
-        super("Execução de serviço não encontrado com ID: " + id);
+        super("Execução de serviço não encontrada com ID: " + id);
     }
 }
