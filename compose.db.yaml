@@ -1,7 +1,7 @@
 services:
   postgres:
     image: postgres:16
-    container_name: ms-execution-local-db
+    container_name: ms-ofisy-execution-local-db
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
