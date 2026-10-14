@@ -1,0 +1,65 @@
+# Guia de Testes
+
+## Pré-requisitos
+
+- Docker rodando localmente. Os testes que sobem o contexto do Spring usam **Testcontainers** para criar um PostgreSQL e um LocalStack reais, sem precisar do `compose`.
+
+---
+
+## Executando
+
+| Comando                         | O que roda                                                                  |
+|---------------------------------|-----------------------------------------------------------------------------|
+| `make test` / `./mvnw test`     | Testes unitários (Surefire)                                                 |
+| `make verify` / `./mvnw verify` | Unitários + integração (Failsafe) + relatório e gate de cobertura do JaCoCo |
+
+A separação é feita pelo nome: classes terminadas em `IT` são excluídas do Surefire e executadas pelo Failsafe.
+
+> O `MsOfisyExecutionApplicationTests` (context load) roda no Surefire, mas também usa Testcontainers. Por isso o Docker é necessário inclusive para `make test`.
+
+---
+
+## Estrutura dos testes
+
+| Camada                | Testes                                                                                        | Tipo                                   |
+|-----------------------|-----------------------------------------------------------------------------------------------|----------------------------------------|
+| Domínio               | `ServiceOrderExecutionTest`, `ServiceOrderExecutionStatusTest`, `ProcessedEventTest`          | Unitário                               |
+| Casos de uso          | Um `*ServiceTest` por caso de uso em `application/`                                           | Unitário, com repositórios mockados    |
+| Gateways              | `*MapperTest`, `*RepositoryImplTest`                                                          | Unitário                               |
+| Listeners             | `ExecutionEventsListenerTest`, `QuoteApprovedHandlerTest`                                     | Unitário                               |
+| Listeners             | `ExecutionEventsListenerIT`                                                                   | Integração (SQS + PostgreSQL reais)    |
+| Aplicação             | `MsOfisyExecutionApplicationTests`                                                            | Context load                           |
+
+### Testes de integração
+
+O `ExecutionEventsListenerIT` publica mensagens direto na fila do LocalStack e usa **Awaitility** para esperar o processamento assíncrono. Cenários cobertos:
+
+- o mesmo `QuoteApproved` entregue duas vezes cria as execuções só uma vez;
+- um evento sem handler é confirmado e não altera o banco.
+
+---
+
+## Testcontainers
+
+A configuração fica em `TestcontainersConfiguration` e é importada com `@Import(TestcontainersConfiguration.class)`:
+
+- **PostgreSQL** via `@ServiceConnection`: o datasource é apontado para o container e o Flyway aplica as migrations ao subir o contexto.
+- **LocalStack** (`sns`, `sqs`) via `@ServiceConnection`: o container recebe uma cópia do `localstack/init/ready.d/01-messaging.sh`, então fila, DLQ e assinatura são **as mesmas do ambiente local**. O container só é considerado pronto quando o init script termina.
+
+### Rodando a aplicação com os containers de teste
+
+O `TestMsOfisyExecutionApplication` (em `src/test`) sobe a aplicação usando os containers do Testcontainers no lugar do `compose`, o que é útil para depurar pela IDE sem precisar do `make dev-up`.
+
+---
+
+## Cobertura (JaCoCo)
+
+- O relatório é gerado no `verify` em `target/site/jacoco/index.html`.
+- O build **falha** se a cobertura do projeto ficar abaixo de **80% de linhas** ou **80% de branches**.
+- Ficam fora da contagem: `MsOfisyExecutionApplication` e o pacote `config`.
+
+---
+
+## CI
+
+O workflow `.github/workflows/ci.yml` roda `mvn -B verify` a cada push e Pull Request na `master`, com o mesmo gate de cobertura. O relatório do JaCoCo é publicado como artefato `jacoco-report` da execução, mesmo quando o build falha.
