@@ -29,4 +29,6 @@ public interface ServiceOrderExecutionRepository {
     List<ServiceOrderExecution> findByServiceOrderIdAndStatusIn(UUID serviceOrderId, Collection<ServiceOrderExecutionStatus> statuses);
 
     double averageExecutionMinutesByServiceCatalogIdAndStatus(UUID serviceCatalogId, ServiceOrderExecutionStatus status);
+
+    boolean existsByServiceOrderIdAndServiceCatalogId(UUID serviceOrderId, UUID serviceCatalogId);
 }

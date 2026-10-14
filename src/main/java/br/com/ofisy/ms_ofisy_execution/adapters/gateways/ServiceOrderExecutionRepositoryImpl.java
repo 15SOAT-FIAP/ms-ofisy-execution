@@ -78,4 +78,9 @@ public class ServiceOrderExecutionRepositoryImpl implements ServiceOrderExecutio
     public double averageExecutionMinutesByServiceCatalogIdAndStatus(UUID serviceCatalogId, ServiceOrderExecutionStatus status) {
         return jpa.averageExecutionMinutesByServiceCatalogIdAndStatus(serviceCatalogId, status.name());
     }
+
+    @Override
+    public boolean existsByServiceOrderIdAndServiceCatalogId(UUID serviceOrderId, UUID serviceCatalogId) {
+        return jpa.existsByServiceOrderIdAndServiceCatalogId(serviceOrderId, serviceCatalogId);
+    }
 }
