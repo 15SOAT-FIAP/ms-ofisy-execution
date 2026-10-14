@@ -242,4 +242,20 @@ class ServiceOrderExecutionRepositoryImplTest {
                         serviceOrderId,
                         statuses);
     }
+
+    @Test
+    void shouldCheckIfExecutionExistsByServiceOrderIdAndServiceCatalogId() {
+        UUID serviceOrderId = UUID.randomUUID();
+        UUID serviceCatalogId = UUID.randomUUID();
+
+        when(jpa.existsByServiceOrderIdAndServiceCatalogId(serviceOrderId, serviceCatalogId))
+                .thenReturn(true);
+
+        boolean result = repository.existsByServiceOrderIdAndServiceCatalogId(serviceOrderId, serviceCatalogId);
+
+        assertTrue(result);
+
+        verify(jpa)
+                .existsByServiceOrderIdAndServiceCatalogId(serviceOrderId, serviceCatalogId);
+    }
 }
