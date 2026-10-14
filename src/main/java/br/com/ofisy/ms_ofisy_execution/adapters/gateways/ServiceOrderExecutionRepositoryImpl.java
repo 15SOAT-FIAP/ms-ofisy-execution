@@ -73,4 +73,9 @@ public class ServiceOrderExecutionRepositoryImpl implements ServiceOrderExecutio
                 .map(ServiceOrderExecutionMapper::toDomain)
                 .toList();
     }
+
+    @Override
+    public boolean existsByServiceOrderIdAndServiceCatalogId(UUID serviceOrderId, UUID serviceCatalogId) {
+        return jpa.existsByServiceOrderIdAndServiceCatalogId(serviceOrderId, serviceCatalogId);
+    }
 }
