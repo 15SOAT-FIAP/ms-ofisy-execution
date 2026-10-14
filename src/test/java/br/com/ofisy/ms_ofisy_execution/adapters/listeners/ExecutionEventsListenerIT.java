@@ -21,7 +21,7 @@ import static org.awaitility.Awaitility.await;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
-class QuoteApprovedListenerIT {
+class ExecutionEventsListenerIT {
 
     @Autowired
     private SqsAsyncClient sqsAsyncClient;
@@ -53,6 +53,28 @@ class QuoteApprovedListenerIT {
         assertThat(executionRepository.countByServiceOrderId(serviceOrderId)).isEqualTo(2);
         assertThat(executionRepository.countByServiceOrderIdAndStatus(serviceOrderId, ServiceOrderExecutionStatus.PENDING))
                 .isEqualTo(2);
+    }
+
+    @Test
+    void shouldAcknowledgeEventWithoutHandlerWithoutProcessingIt() {
+        UUID eventId = UUID.randomUUID();
+        UUID serviceOrderId = UUID.randomUUID();
+        String body = """
+                {
+                  "eventId": "%s",
+                  "type": "QuoteRejected",
+                  "serviceOrderId": "%s",
+                  "occurredAt": "2026-10-13T10:00:00Z",
+                  "payload": { "quoteId": "%s" }
+                }
+                """.formatted(eventId, serviceOrderId, UUID.randomUUID());
+        String queueUrl = queueUrl();
+
+        send(queueUrl, serviceOrderId, body);
+
+        await().atMost(Duration.ofSeconds(30)).untilAsserted(() -> assertThat(pendingMessages(queueUrl)).isZero());
+        assertThat(processedEventRepository.existsById(eventId)).isFalse();
+        assertThat(executionRepository.countByServiceOrderId(serviceOrderId)).isZero();
     }
 
     private String quoteApprovedBody(UUID eventId, UUID serviceOrderId, UUID firstCatalogId, UUID secondCatalogId) {
