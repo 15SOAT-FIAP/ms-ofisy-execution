@@ -31,6 +31,9 @@ A separação é feita pelo nome: classes terminadas em `IT` são excluídas do 
 | Listeners             | `ExecutionEventsListenerIT`                                                                   | Integração (SQS + PostgreSQL reais)    |
 | Publishers            | `OutboxEventPublisherTest`                                                                    | Unitário, com SNS e JPA mockados       |
 | Publishers            | `OutboxEventPublisherIT`                                                                      | Integração (SNS + SQS + PostgreSQL reais) |
+| Controllers           | `ServiceOrderExecutionControllerTest`                                                         | `@WebMvcTest` com `MockMvc` e casos de uso mockados |
+| Controllers           | `ServiceOrderExecutionControllerIT`                                                           | Integração com RestAssured (aplicação em porta aleatória + PostgreSQL real) |
+| Presenters            | `ServiceOrderExecutionPresenterTest`                                                          | Unitário                               |
 | Aplicação             | `MsOfisyExecutionApplicationTests`                                                            | Context load                           |
 
 ### Testes de integração
@@ -50,6 +53,12 @@ O `JpaServiceOrderExecutionRepositoryIT` usa `@DataJpaTest` contra o PostgreSQL 
 - ignora execuções de outros serviços do catálogo.
 
 O `OutboxEventPublisherIT` grava um evento pelo `OutboxEventRepository` e espera recebê-lo na fila de inspeção `ofisy-execution-events-inspect.fifo`, assinada no tópico do ms. Ele confere o envelope recebido e que o registro foi marcado como publicado.
+
+O `ServiceOrderExecutionControllerIT` sobe a aplicação em porta aleatória e chama a API com **RestAssured**, como os `*ControllerIT` do core. Cenários cobertos:
+
+- iniciar a primeira execução de uma OS grava um `ExecutionStarted` no outbox, e iniciar a segunda não grava outro;
+- iniciar uma execução já iniciada devolve `409`, sem novo evento;
+- iniciar uma execução inexistente devolve `404`.
 
 ---
 
