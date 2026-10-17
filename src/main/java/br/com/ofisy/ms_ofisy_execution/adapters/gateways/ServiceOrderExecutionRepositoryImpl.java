@@ -88,4 +88,12 @@ public class ServiceOrderExecutionRepositoryImpl implements ServiceOrderExecutio
     public boolean existsByServiceOrderIdAndStartedAtIsNotNull(UUID serviceOrderId) {
         return jpa.existsByServiceOrderIdAndStartedAtIsNotNull(serviceOrderId);
     }
+
+    @Override
+    public List<ServiceOrderExecution> lockAllFromSameServiceOrder(UUID executionId) {
+        return jpa.lockAllFromSameServiceOrder(executionId)
+                .stream()
+                .map(ServiceOrderExecutionMapper::toDomain)
+                .toList();
+    }
 }

@@ -33,4 +33,6 @@ public interface ServiceOrderExecutionRepository {
     boolean existsByServiceOrderIdAndServiceCatalogId(UUID serviceOrderId, UUID serviceCatalogId);
 
     boolean existsByServiceOrderIdAndStartedAtIsNotNull(UUID serviceOrderId);
+
+    List<ServiceOrderExecution> lockAllFromSameServiceOrder(UUID executionId);
 }
