@@ -1,5 +1,6 @@
 package br.com.ofisy.ms_ofisy_execution.adapters.controllers;
 
+import br.com.ofisy.ms_ofisy_execution.application.complete.CompleteServiceOrderExecutionUseCase;
 import br.com.ofisy.ms_ofisy_execution.application.exception.ServiceOrderExecutionNotFoundException;
 import br.com.ofisy.ms_ofisy_execution.application.start.StartServiceOrderExecutionUseCase;
 import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecution;
@@ -33,6 +34,47 @@ class ServiceOrderExecutionControllerTest {
 
     @MockitoBean
     private StartServiceOrderExecutionUseCase startServiceOrderExecutionUseCase;
+
+    @MockitoBean
+    private CompleteServiceOrderExecutionUseCase completeServiceOrderExecutionUseCase;
+
+    @Nested
+    class Complete {
+
+        @Test
+        void shouldReturn200WithCompletedExecution() throws Exception {
+            LocalDateTime startedAt = LocalDateTime.of(2026, 10, 17, 10, 0);
+            LocalDateTime finishedAt = LocalDateTime.of(2026, 10, 17, 11, 0);
+            ServiceOrderExecution execution = ServiceOrderExecution.reconstruct(
+                    ID, SERVICE_CATALOG_ID, SERVICE_ORDER_ID, ServiceOrderExecutionStatus.COMPLETED, startedAt, finishedAt, startedAt, finishedAt);
+            when(completeServiceOrderExecutionUseCase.execute(ID)).thenReturn(execution);
+
+            mockMvc.perform(patch(BASE_URL + "/{id}/complete", ID))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.id").value(ID.toString()))
+                    .andExpect(jsonPath("$.status").value("COMPLETED"))
+                    .andExpect(jsonPath("$.finishedAt").value("2026-10-17T11:00:00"));
+        }
+
+        @Test
+        void shouldReturn404WhenExecutionDoesNotExist() throws Exception {
+            when(completeServiceOrderExecutionUseCase.execute(ID)).thenThrow(new ServiceOrderExecutionNotFoundException(ID));
+
+            mockMvc.perform(patch(BASE_URL + "/{id}/complete", ID))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.title").value("Execução não encontrada"));
+        }
+
+        @Test
+        void shouldReturn409WhenTransitionIsInvalid() throws Exception {
+            when(completeServiceOrderExecutionUseCase.execute(ID)).thenThrow(new InvalidServiceOrderExecutionTransitionException(
+                    ServiceOrderExecutionStatus.PENDING, ServiceOrderExecutionStatus.COMPLETED));
+
+            mockMvc.perform(patch(BASE_URL + "/{id}/complete", ID))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.title").value("Transição de status inválida"));
+        }
+    }
 
     @Nested
     class Start {
