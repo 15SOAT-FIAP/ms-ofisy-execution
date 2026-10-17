@@ -25,9 +25,17 @@ erDiagram
         VARCHAR event_type
         TIMESTAMP processed_at
     }
+    outbox_events {
+        UUID event_id PK
+        VARCHAR event_type
+        UUID service_order_id
+        JSONB payload
+        TIMESTAMPTZ occurred_at
+        TIMESTAMPTZ published_at
+    }
 ```
 
-As duas tabelas não se relacionam entre si.
+As tabelas não se relacionam entre si.
 
 ---
 
@@ -79,6 +87,27 @@ Registro dos eventos já processados, usado para descartar reentregas.
 
 O registro é gravado na mesma transação que cria as execuções. Se o processamento falhar, nenhum dos dois é persistido e o evento pode ser reprocessado.
 
+### `outbox_events`
+
+Eventos produzidos por este ms, aguardando ou já publicados no SNS ([MESSAGING.md](MESSAGING.md#publicação-de-eventos-outbox)).
+
+| Coluna             | Tipo           | Nulo | Descrição                                                  |
+|--------------------|----------------|------|------------------------------------------------------------|
+| `event_id`         | `UUID`         | não  | Chave primária, vira o `eventId` do envelope               |
+| `event_type`       | `VARCHAR(100)` | não  | Tipo do evento                                             |
+| `service_order_id` | `UUID`         | não  | Ordem de serviço do evento, usada como `message-group-id`  |
+| `payload`          | `JSONB`        | não  | Dados específicos do tipo de evento                        |
+| `occurred_at`      | `TIMESTAMPTZ`  | não  | Momento do evento, define a ordem de publicação            |
+| `published_at`     | `TIMESTAMPTZ`  | sim  | Preenchido quando o evento é publicado no SNS              |
+
+As datas usam `TIMESTAMPTZ` porque o `occurredAt` do envelope é um `Instant`.
+
+**Índices**
+
+| Nome                        | Coluna        | Consulta atendida                                                            |
+|-----------------------------|---------------|------------------------------------------------------------------------------|
+| `idx_outbox_events_pending` | `occurred_at` | Busca dos pendentes pelo publicador. Parcial (`WHERE published_at IS NULL`), então não cresce com os já publicados |
+
 ---
 
 ## Migrations
@@ -88,6 +117,7 @@ O registro é gravado na mesma transação que cria as execuções. Se o process
 | V1     | `V1__create_service_order_executions_table.sql`   | Tabela `service_order_executions`, constraints e índices   |
 | V2     | `V2__insert_service_order_executions_data.sql`    | Massa de dados com 12 execuções em 6 ordens de serviço     |
 | V3     | `V3__create_processed_events_table.sql`           | Tabela `processed_events`                                  |
+| V4     | `V4__create_outbox_events_table.sql`              | Tabela `outbox_events` e índice dos pendentes              |
 
 A massa de dados (V2) usa os mesmos IDs de ordens de serviço e de catálogo das migrations de seed do core (`V15`, `V16` e `V17`), para facilitar testes ponta a ponta.
 
@@ -96,4 +126,5 @@ A massa de dados (V2) usa os mesmos IDs de ordens de serviço e de catálogo das
 ```bash
 make db-executions SERVICE_ORDER_ID=c3d4e5f6-a7b8-9012-cdef-123456780001
 make db-processed-events
+make db-outbox
 ```
