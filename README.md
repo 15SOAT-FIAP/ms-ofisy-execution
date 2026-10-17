@@ -21,11 +21,16 @@ br.com.ofisy.ms_ofisy_execution
 ├── domain/                       # Entidades, máquina de estados, portas de repositório e exceções de domínio
 ├── application/                  # Casos de uso
 │   └── <caso-de-uso>/                # Interface do UseCase + Service com a implementação
-└── adapters/                     # Conexão do domínio/aplicação com o mundo externo
-    ├── gateways/                     # Adaptadores de saída: Entity JPA, Mapper, RepositoryImpl e interface Spring Data
-    └── listeners/                    # Adaptadores de entrada: consumo da fila SQS
-        ├── dto/                          # Envelope do evento e payloads
-        └── handlers/                     # Um EventHandler por tipo de evento
+├── adapters/                     # Conexão do domínio/aplicação com o mundo externo
+│   ├── controllers/                  # Adaptadores de entrada: API REST
+│   │   └── dto/                          # DTOs de resposta
+│   ├── presenters/                   # Conversão do domínio para os DTOs de resposta
+│   ├── gateways/                     # Adaptadores de saída: Entity JPA, Mapper, RepositoryImpl e interface Spring Data
+│   ├── publishers/                   # Adaptadores de saída: publicação do outbox no SNS
+│   └── listeners/                    # Adaptadores de entrada: consumo da fila SQS
+│       ├── dto/                          # Envelope do evento e payloads
+│       └── handlers/                     # Um EventHandler por tipo de evento
+└── config/                       # Configurações do Spring e tratamento global de erros
 ```
 
 ---
@@ -135,6 +140,14 @@ A aplicação fica disponível em `http://localhost:8081`.
 ### Health check
 
 - `GET /actuator/health`
+
+### API
+
+| Método  | Rota                                         | Descrição                                                                   |
+|---------|----------------------------------------------|-----------------------------------------------------------------------------|
+| `PATCH` | `/api/v1/service_order_executions/{id}/start` | Inicia uma execução `PENDING`. Responde `404` se não existir e `409` se não estiver `PENDING` |
+
+Erros seguem o formato `ProblemDetail` (RFC 9457), com `title` e `detail`. A autenticação JWT ainda não está aplicada às rotas.
 
 Para ver todos os comandos disponíveis, rode `make help`.
 

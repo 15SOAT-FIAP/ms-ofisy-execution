@@ -24,4 +24,6 @@ public interface JpaServiceOrderExecutionRepository extends JpaRepository<Servic
     List<ServiceOrderExecutionEntity> findByServiceOrderIdAndStatusIn(UUID serviceOrderId, Collection<ServiceOrderExecutionStatus> statuses);
 
     boolean existsByServiceOrderIdAndServiceCatalogId(UUID serviceOrderId, UUID serviceCatalogId);
+
+    boolean existsByServiceOrderIdAndStartedAtIsNotNull(UUID serviceOrderId);
 }

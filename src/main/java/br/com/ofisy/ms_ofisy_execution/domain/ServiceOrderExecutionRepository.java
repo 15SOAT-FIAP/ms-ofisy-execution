@@ -29,4 +29,6 @@ public interface ServiceOrderExecutionRepository {
     List<ServiceOrderExecution> findByServiceOrderIdAndStatusIn(UUID serviceOrderId, Collection<ServiceOrderExecutionStatus> statuses);
 
     boolean existsByServiceOrderIdAndServiceCatalogId(UUID serviceOrderId, UUID serviceCatalogId);
+
+    boolean existsByServiceOrderIdAndStartedAtIsNotNull(UUID serviceOrderId);
 }

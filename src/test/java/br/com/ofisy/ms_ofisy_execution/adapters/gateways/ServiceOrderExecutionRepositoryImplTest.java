@@ -258,4 +258,19 @@ class ServiceOrderExecutionRepositoryImplTest {
         verify(jpa)
                 .existsByServiceOrderIdAndServiceCatalogId(serviceOrderId, serviceCatalogId);
     }
+
+    @Test
+    void shouldCheckIfServiceOrderHasStartedExecution() {
+        UUID serviceOrderId = UUID.randomUUID();
+
+        when(jpa.existsByServiceOrderIdAndStartedAtIsNotNull(serviceOrderId))
+                .thenReturn(true);
+
+        boolean result = repository.existsByServiceOrderIdAndStartedAtIsNotNull(serviceOrderId);
+
+        assertTrue(result);
+
+        verify(jpa)
+                .existsByServiceOrderIdAndStartedAtIsNotNull(serviceOrderId);
+    }
 }

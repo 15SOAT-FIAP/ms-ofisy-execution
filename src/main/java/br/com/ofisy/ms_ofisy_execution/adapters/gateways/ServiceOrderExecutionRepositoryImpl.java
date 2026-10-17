@@ -78,4 +78,9 @@ public class ServiceOrderExecutionRepositoryImpl implements ServiceOrderExecutio
     public boolean existsByServiceOrderIdAndServiceCatalogId(UUID serviceOrderId, UUID serviceCatalogId) {
         return jpa.existsByServiceOrderIdAndServiceCatalogId(serviceOrderId, serviceCatalogId);
     }
+
+    @Override
+    public boolean existsByServiceOrderIdAndStartedAtIsNotNull(UUID serviceOrderId) {
+        return jpa.existsByServiceOrderIdAndStartedAtIsNotNull(serviceOrderId);
+    }
 }
