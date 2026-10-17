@@ -104,8 +104,8 @@ As datas usam `TIMESTAMPTZ` porque o `occurredAt` do envelope é um `Instant`.
 
 **Índices**
 
-| Nome                        | Coluna        | Consulta atendida                                                            |
-|-----------------------------|---------------|------------------------------------------------------------------------------|
+| Nome                        | Coluna        | Consulta atendida                                                                                                  |
+|-----------------------------|---------------|--------------------------------------------------------------------------------------------------------------------|
 | `idx_outbox_events_pending` | `occurred_at` | Busca dos pendentes pelo publicador. Parcial (`WHERE published_at IS NULL`), então não cresce com os já publicados |
 
 ---
