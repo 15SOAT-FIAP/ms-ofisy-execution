@@ -143,9 +143,10 @@ A aplicação fica disponível em `http://localhost:8081`.
 
 ### API
 
-| Método  | Rota                                         | Descrição                                                                   |
-|---------|----------------------------------------------|-----------------------------------------------------------------------------|
-| `PATCH` | `/api/v1/service_order_executions/{id}/start` | Inicia uma execução `PENDING`. Responde `404` se não existir e `409` se não estiver `PENDING` |
+| Método  | Rota                                             | Descrição                                                                                              |
+|---------|--------------------------------------------------|--------------------------------------------------------------------------------------------------------|
+| `PATCH` | `/api/v1/service_order_executions/{id}/start`    | Inicia uma execução `PENDING`. Responde `404` se não existir e `409` se não estiver `PENDING`          |
+| `PATCH` | `/api/v1/service_order_executions/{id}/complete` | Conclui uma execução `IN_PROGRESS`. Responde `404` se não existir e `409` se não estiver `IN_PROGRESS` |
 
 Erros seguem o formato `ProblemDetail` (RFC 9457), com `title` e `detail`. A autenticação JWT ainda não está aplicada às rotas.
 

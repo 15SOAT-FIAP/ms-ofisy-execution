@@ -71,9 +71,10 @@ Todo evento segue o mesmo envelope (`adapters/listeners/dto/EventEnvelope.java`)
 
 Todos saem pelo outbox, descrito em [Publicação de eventos](#publicação-de-eventos-outbox).
 
-| Evento             | Quando é publicado                                                 | Quem reage                                                 |
-|--------------------|--------------------------------------------------------------------|------------------------------------------------------------|
-| `ExecutionStarted` | Ao iniciar a **primeira** execução de uma OS (`PATCH /{id}/start`) | Core: move a OS de `AWAITING_EXECUTION` para `IN_PROGRESS` |
+| Evento                   | Quando é publicado                                                   | Quem reage                                                 |
+|--------------------------|----------------------------------------------------------------------|------------------------------------------------------------|
+| `ExecutionStarted`       | Ao iniciar a **primeira** execução de uma OS (`PATCH /{id}/start`)   | Core: move a OS de `AWAITING_EXECUTION` para `IN_PROGRESS` |
+| `AllExecutionsCompleted` | Ao concluir a **última** execução de uma OS (`PATCH /{id}/complete`) | Core: move a OS de `IN_PROGRESS` para `FINISHED`           |
 
 #### `ExecutionStarted`
 
@@ -92,6 +93,24 @@ O payload é vazio: o core só precisa do `serviceOrderId`, que já vem no envel
 ```
 
 **Concorrência:** dois inícios simultâneos de execuções da mesma OS podem gravar dois `ExecutionStarted`. Não há efeito duplicado, porque o core só faz a transição a partir de `AWAITING_EXECUTION` e ignora o segundo evento.
+
+#### `AllExecutionsCompleted`
+
+Segue a mesma regra do core: depois de concluir uma execução, se **todas** as execuções da OS estão `COMPLETED` (e existe pelo menos uma), o evento é gravado no outbox na mesma transação. O payload é vazio, como no `ExecutionStarted`.
+
+```json
+{
+  "eventId": "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f",
+  "type": "AllExecutionsCompleted",
+  "serviceOrderId": "c3d4e5f6-a7b8-9012-cdef-123456780001",
+  "occurredAt": "2026-10-17T15:00:00.123456Z",
+  "payload": {}
+}
+```
+
+**Execução cancelada:** como no core, uma execução `CANCELLED` impede que a OS chegue a "todas concluídas", e o evento não é publicado. A regra foi mantida de propósito, para não divergir do core.
+
+**Concorrência:** sem cuidado, as duas últimas execuções concluídas ao mesmo tempo não enxergariam uma à outra, nenhuma publicaria o evento e a OS ficaria parada (o core tem esse risco). Por isso, a conclusão trava todas as execuções da OS com `SELECT ... FOR UPDATE` (`lockAllFromSameServiceOrder`, ordenado por `id` para evitar deadlock) antes de verificar a regra. As conclusões de uma mesma OS são serializadas, e a última sempre vê as anteriores e publica um único evento.
 
 ---
 
@@ -178,12 +197,12 @@ sequenceDiagram
     end
 ```
 
-| Peça                                    | Papel                                                                     |
-|-----------------------------------------|---------------------------------------------------------------------------|
-| `domain/OutboxEvent`                    | O evento a publicar: tipo, OS e payload. Id e `occurredAt` são gerados    |
-| `domain/OutboxEventRepository`          | Porta usada pelos casos de uso. Só tem `save`                             |
-| `adapters/gateways/OutboxEventRepositoryImpl` | Serializa o payload para JSON e grava em `outbox_events`            |
-| `adapters/publishers/OutboxEventPublisher`    | Lê os pendentes, publica o envelope no SNS e marca `published_at`   |
+| Peça                                          | Papel                                                                  |
+|-----------------------------------------------|------------------------------------------------------------------------|
+| `domain/OutboxEvent`                          | O evento a publicar: tipo, OS e payload. Id e `occurredAt` são gerados |
+| `domain/OutboxEventRepository`                | Porta usada pelos casos de uso. Só tem `save`                          |
+| `adapters/gateways/OutboxEventRepositoryImpl` | Serializa o payload para JSON e grava em `outbox_events`               |
+| `adapters/publishers/OutboxEventPublisher`    | Lê os pendentes, publica o envelope no SNS e marca `published_at`      |
 
 O envelope publicado é o mesmo `EventEnvelope` que este ms consome, então quem assina o tópico recebe o mesmo contrato descrito em [Contrato dos eventos](#contrato-dos-eventos).
 
@@ -196,11 +215,11 @@ O envelope publicado é o mesmo `EventEnvelope` que este ms consome, então quem
 
 ### Configuração
 
-| Propriedade                               | Padrão                        | Descrição                              |
-|-------------------------------------------|-------------------------------|----------------------------------------|
-| `ofisy.messaging.topics.execution`        | `ofisy-execution-events.fifo` | Nome do tópico onde os eventos saem    |
+| Propriedade                               | Padrão                        | Descrição                                               |
+|-------------------------------------------|-------------------------------|---------------------------------------------------------|
+| `ofisy.messaging.topics.execution`        | `ofisy-execution-events.fifo` | Nome do tópico onde os eventos saem                     |
 | `ofisy.messaging.outbox.publish-interval` | `1s`                          | Intervalo entre o fim de um ciclo e o início do próximo |
-| `ofisy.messaging.outbox.batch-size`       | `100`                         | Máximo de eventos publicados por ciclo |
+| `ofisy.messaging.outbox.batch-size`       | `100`                         | Máximo de eventos publicados por ciclo                  |
 
 ### Como publicar um novo evento
 
