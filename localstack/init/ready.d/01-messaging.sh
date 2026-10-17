@@ -33,3 +33,25 @@ awslocal sns subscribe \
   --protocol sqs \
   --notification-endpoint "$QUEUE_ARN" \
   --attributes '{"RawMessageDelivery":"true","FilterPolicyScope":"MessageBody","FilterPolicy":"{\"type\":[\"QuoteApproved\"]}"}'
+# Tópico de eventos publicados por este ms. A fila de inspeção existe só localmente, para ver o que foi publicado
+
+EXECUTION_TOPIC_ARN=$(awslocal sns create-topic \
+  --name ofisy-execution-events.fifo \
+  --attributes FifoTopic=true \
+  --query TopicArn --output text)
+
+INSPECT_QUEUE_URL=$(awslocal sqs create-queue \
+  --queue-name ofisy-execution-events-inspect.fifo \
+  --attributes FifoQueue=true \
+  --query QueueUrl --output text)
+
+INSPECT_QUEUE_ARN=$(awslocal sqs get-queue-attributes \
+  --queue-url "$INSPECT_QUEUE_URL" \
+  --attribute-names QueueArn \
+  --query Attributes.QueueArn --output text)
+
+awslocal sns subscribe \
+  --topic-arn "$EXECUTION_TOPIC_ARN" \
+  --protocol sqs \
+  --notification-endpoint "$INSPECT_QUEUE_ARN" \
+  --attributes '{"RawMessageDelivery":"true"}'
