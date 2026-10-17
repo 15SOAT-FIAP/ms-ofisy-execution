@@ -1,7 +1,7 @@
 .PHONY: help dev-up dev-down run test verify \
 	event-quote-approved event-ignored event-invalid \
-	queue-status dlq-peek dlq-redrive dlq-purge \
-	db-executions db-processed-events
+	queue-status dlq-peek dlq-redrive dlq-purge events-peek \
+	db-executions db-processed-events db-outbox
 
 LOCALSTACK_CONTAINER ?= ms-ofisy-execution-local-localstack
 DB_CONTAINER ?= ms-ofisy-execution-local-db
@@ -9,6 +9,7 @@ DB_CONTAINER ?= ms-ofisy-execution-local-db
 AWS := docker exec $(LOCALSTACK_CONTAINER) awslocal
 QUEUE_NAME := ofisy-execution.fifo
 DLQ_NAME := ofisy-execution-dlq.fifo
+INSPECT_QUEUE_NAME := ofisy-execution-events-inspect.fifo
 QUEUE_ARN := arn:aws:sqs:us-east-1:000000000000:$(QUEUE_NAME)
 DLQ_ARN := arn:aws:sqs:us-east-1:000000000000:$(DLQ_NAME)
 
@@ -70,9 +71,17 @@ dlq-purge: ## Apaga todas as mensagens da DLQ
 	@$(AWS) sqs purge-queue --queue-url $(call queue_url,$(DLQ_NAME))
 	@echo "DLQ esvaziada"
 
+events-peek: ## Lista os eventos publicados no tópico do ms, pela fila de inspeção local
+	@$(AWS) sqs receive-message --queue-url $(call queue_url,$(INSPECT_QUEUE_NAME)) \
+		--max-number-of-messages 10 --visibility-timeout 0 \
+		--query 'Messages[].Body' --output json
+
 db-executions: ## Lista as execuções de uma OS (SERVICE_ORDER_ID obrigatório)
 	@test -n "$(SERVICE_ORDER_ID)" || (echo "Informe SERVICE_ORDER_ID=<uuid>" && exit 1)
 	@$(psql) "select id, service_catalog_id, status, created_at from service_order_executions where service_order_id = '$(SERVICE_ORDER_ID)';"
 
 db-processed-events: ## Lista os últimos eventos processados
 	@$(psql) "select * from processed_events order by processed_at desc limit 10;"
+
+db-outbox: ## Lista os últimos eventos do outbox e se já foram publicados
+	@$(psql) "select event_id, event_type, service_order_id, occurred_at, published_at from outbox_events order by occurred_at desc limit 10;"
