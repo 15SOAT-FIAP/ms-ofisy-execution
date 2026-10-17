@@ -69,7 +69,29 @@ Todo evento segue o mesmo envelope (`adapters/listeners/dto/EventEnvelope.java`)
 
 ### Eventos publicados
 
-Nenhum evento de negócio por enquanto. A estrutura de publicação está descrita em [Publicação de eventos](#publicação-de-eventos-outbox).
+Todos saem pelo outbox, descrito em [Publicação de eventos](#publicação-de-eventos-outbox).
+
+| Evento             | Quando é publicado                                                 | Quem reage                                                 |
+|--------------------|--------------------------------------------------------------------|------------------------------------------------------------|
+| `ExecutionStarted` | Ao iniciar a **primeira** execução de uma OS (`PATCH /{id}/start`) | Core: move a OS de `AWAITING_EXECUTION` para `IN_PROGRESS` |
+
+#### `ExecutionStarted`
+
+No core, o início de uma execução só muda o status da OS quando ela ainda está em `AWAITING_EXECUTION`, ou seja, no início da primeira execução. O ms reproduz essa regra sem conhecer o status da OS: o evento sai apenas se **nenhuma execução da OS tem `startedAt` preenchido** antes deste início. Uma execução iniciada e depois cancelada mantém o `startedAt`, então um novo início não publica o evento outra vez, assim como o core não volta a mudar a OS.
+
+O payload é vazio: o core só precisa do `serviceOrderId`, que já vem no envelope.
+
+```json
+{
+  "eventId": "9b2f6c1e-4a7d-4e8b-a1c3-5d6e7f8a9b0c",
+  "type": "ExecutionStarted",
+  "serviceOrderId": "c3d4e5f6-a7b8-9012-cdef-123456780001",
+  "occurredAt": "2026-10-17T13:00:00.123456Z",
+  "payload": {}
+}
+```
+
+**Concorrência:** dois inícios simultâneos de execuções da mesma OS podem gravar dois `ExecutionStarted`. Não há efeito duplicado, porque o core só faz a transição a partir de `AWAITING_EXECUTION` e ignora o segundo evento.
 
 ---
 
