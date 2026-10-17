@@ -31,4 +31,6 @@ public interface ServiceOrderExecutionRepository {
     double averageExecutionMinutesByServiceCatalogIdAndStatus(UUID serviceCatalogId, ServiceOrderExecutionStatus status);
 
     boolean existsByServiceOrderIdAndServiceCatalogId(UUID serviceOrderId, UUID serviceCatalogId);
+
+    boolean existsByServiceOrderIdAndStartedAtIsNotNull(UUID serviceOrderId);
 }
