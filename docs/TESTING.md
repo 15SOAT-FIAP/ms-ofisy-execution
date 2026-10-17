@@ -23,11 +23,13 @@ A separação é feita pelo nome: classes terminadas em `IT` são excluídas do 
 
 | Camada                | Testes                                                                                        | Tipo                                   |
 |-----------------------|-----------------------------------------------------------------------------------------------|----------------------------------------|
-| Domínio               | `ServiceOrderExecutionTest`, `ServiceOrderExecutionStatusTest`, `ProcessedEventTest`          | Unitário                               |
+| Domínio               | `ServiceOrderExecutionTest`, `ServiceOrderExecutionStatusTest`, `ProcessedEventTest`, `OutboxEventTest` | Unitário                     |
 | Casos de uso          | Um `*ServiceTest` por caso de uso em `application/`                                           | Unitário, com repositórios mockados    |
 | Gateways              | `*MapperTest`, `*RepositoryImplTest`                                                          | Unitário                               |
 | Listeners             | `ExecutionEventsListenerTest`, `QuoteApprovedHandlerTest`                                     | Unitário                               |
 | Listeners             | `ExecutionEventsListenerIT`                                                                   | Integração (SQS + PostgreSQL reais)    |
+| Publishers            | `OutboxEventPublisherTest`                                                                    | Unitário, com SNS e JPA mockados       |
+| Publishers            | `OutboxEventPublisherIT`                                                                      | Integração (SNS + SQS + PostgreSQL reais) |
 | Aplicação             | `MsOfisyExecutionApplicationTests`                                                            | Context load                           |
 
 ### Testes de integração
@@ -36,6 +38,8 @@ O `ExecutionEventsListenerIT` publica mensagens direto na fila do LocalStack e u
 
 - o mesmo `QuoteApproved` entregue duas vezes cria as execuções só uma vez;
 - um evento sem handler é confirmado e não altera o banco.
+
+O `OutboxEventPublisherIT` grava um evento pelo `OutboxEventRepository` e espera recebê-lo na fila de inspeção `ofisy-execution-events-inspect.fifo`, assinada no tópico do ms. Ele confere o envelope recebido e que o registro foi marcado como publicado.
 
 ---
 
