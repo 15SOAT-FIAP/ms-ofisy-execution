@@ -29,6 +29,11 @@ ofisy:
   messaging:
     queues:
       execution: ofisy-execution.fifo
+    topics:
+      execution: ofisy-execution-events.fifo
+    outbox:
+      publish-interval: 1s
+      batch-size: 100
 management:
   endpoints:
     web:
