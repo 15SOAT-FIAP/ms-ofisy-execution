@@ -101,6 +101,24 @@ class GetAverageExecutionTimeServiceTest {
         }
 
         @Test
+        @DisplayName("Deve ignorar execuções canceladas mesmo com as duas datas preenchidas")
+        void shouldIgnoreCancelledExecutions() {
+            var cancelled = executionWithTimes(ServiceOrderExecutionStatus.CANCELLED,
+                    LocalDateTime.of(2026, 1, 1, 9, 0),
+                    LocalDateTime.of(2026, 1, 1, 9, 5));
+            var complete = executionWithTimes(
+                    LocalDateTime.of(2026, 1, 1, 9, 0),
+                    LocalDateTime.of(2026, 1, 1, 9, 30));
+
+            when(repository.findByServiceCatalogId(SERVICE_CATALOG_ID, Pageable.unpaged()))
+                    .thenReturn(pageOf(cancelled, complete));
+
+            var result = service.execute(SERVICE_CATALOG_ID);
+
+            assertThat(result).isEqualTo(30.0);
+        }
+
+        @Test
         @DisplayName("Deve retornar zero quando nenhuma execução possui as duas datas preenchidas")
         void shouldReturnZeroWhenNoExecutionHasBothTimestamps() {
             var onlyStarted = executionWithTimes(LocalDateTime.of(2026, 1, 1, 9, 0), null);
@@ -150,9 +168,14 @@ class GetAverageExecutionTimeServiceTest {
     }
 
     private ServiceOrderExecution executionWithTimes(LocalDateTime startedAt, LocalDateTime finishedAt) {
+        return executionWithTimes(ServiceOrderExecutionStatus.COMPLETED, startedAt, finishedAt);
+    }
+
+    private ServiceOrderExecution executionWithTimes(ServiceOrderExecutionStatus status,
+                                                     LocalDateTime startedAt, LocalDateTime finishedAt) {
         return ServiceOrderExecution.reconstruct(
                 UUID.randomUUID(), SERVICE_CATALOG_ID, SERVICE_ORDER_ID,
-                ServiceOrderExecutionStatus.COMPLETED, LocalDateTime.now(), LocalDateTime.now(),
+                status, LocalDateTime.now(), LocalDateTime.now(),
                 startedAt, finishedAt);
     }
 }
