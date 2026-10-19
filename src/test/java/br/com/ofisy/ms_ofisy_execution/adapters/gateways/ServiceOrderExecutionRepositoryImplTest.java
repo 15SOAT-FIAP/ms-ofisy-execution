@@ -242,4 +242,24 @@ class ServiceOrderExecutionRepositoryImplTest {
                         serviceOrderId,
                         statuses);
     }
+
+
+    @Test
+    void shouldReturnAverageExecutionMinutesByServiceCatalogIdAndStatus() {
+        UUID serviceCatalogId = UUID.randomUUID();
+
+        when(jpa.averageExecutionMinutesByServiceCatalogIdAndStatus(
+                serviceCatalogId,
+                "COMPLETED"))
+                .thenReturn(45.0);
+
+
+        double result =
+                repository.averageExecutionMinutesByServiceCatalogIdAndStatus(
+                        serviceCatalogId,
+                        ServiceOrderExecutionStatus.COMPLETED);
+
+
+        assertEquals(45.0, result);
+    }
 }
