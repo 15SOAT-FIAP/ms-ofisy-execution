@@ -73,4 +73,9 @@ public class ServiceOrderExecutionRepositoryImpl implements ServiceOrderExecutio
                 .map(ServiceOrderExecutionMapper::toDomain)
                 .toList();
     }
+
+    @Override
+    public double averageExecutionMinutesByServiceCatalogIdAndStatus(UUID serviceCatalogId, ServiceOrderExecutionStatus status) {
+        return jpa.averageExecutionMinutesByServiceCatalogIdAndStatus(serviceCatalogId, status.name());
+    }
 }
