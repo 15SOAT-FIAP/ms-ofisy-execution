@@ -2,6 +2,7 @@ package br.com.ofisy.ms_ofisy_execution.application.getaverageexecutiontime;
 
 import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecution;
 import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecutionRepository;
+import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecutionStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -27,7 +28,8 @@ public class GetAverageExecutionTimeService implements GetAverageExecutionTimeSe
         }
 
         long totalMinutes = serviceOrderExecutions.stream()
-                .filter(sos -> sos.getStartedAt() != null && sos.getFinishedAt() != null)
+                .filter(sos -> sos.getStatus() == ServiceOrderExecutionStatus.COMPLETED
+                        && sos.getStartedAt() != null && sos.getFinishedAt() != null)
                 .mapToLong(sos -> {
                     long minutes = java.time.temporal.ChronoUnit.MINUTES
                             .between(sos.getStartedAt(), sos.getFinishedAt());
@@ -36,7 +38,8 @@ public class GetAverageExecutionTimeService implements GetAverageExecutionTimeSe
                 .sum();
 
         long completedCount = serviceOrderExecutions.stream()
-                .filter(sos -> sos.getStartedAt() != null && sos.getFinishedAt() != null)
+                .filter(sos -> sos.getStatus() == ServiceOrderExecutionStatus.COMPLETED
+                        && sos.getStartedAt() != null && sos.getFinishedAt() != null)
                 .count();
 
         return completedCount > 0 ? (double) totalMinutes / completedCount : 0.0;
