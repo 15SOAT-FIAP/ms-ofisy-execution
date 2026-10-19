@@ -19,6 +19,16 @@ spring:
       file: compose.db.yaml
   config:
     import: optional:file:.env[.properties]
+  cloud:
+    aws:
+      region:
+        static: us-east-1
+      sqs:
+        queue-not-found-strategy: fail
+ofisy:
+  messaging:
+    queues:
+      execution: ofisy-execution.fifo
 management:
   endpoints:
     web:
