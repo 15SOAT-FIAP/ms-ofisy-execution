@@ -1,5 +1,8 @@
 package br.com.ofisy.ms_ofisy_execution.application.cancelpending;
 
+import br.com.ofisy.ms_ofisy_execution.application.cancelpending.CancelPendingExecutionsUseCase.CancelPendingExecutionsCommand;
+import br.com.ofisy.ms_ofisy_execution.domain.ProcessedEvent;
+import br.com.ofisy.ms_ofisy_execution.domain.ProcessedEventRepository;
 import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecution;
 import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecutionRepository;
 import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecutionStatus;
@@ -25,21 +28,31 @@ import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class CancelPendingExecutionsServiceTest {
 
+    private static final UUID EVENT_ID = UUID.randomUUID();
     private static final UUID SERVICE_ORDER_ID = UUID.randomUUID();
+    private static final CancelPendingExecutionsCommand COMMAND =
+            new CancelPendingExecutionsCommand(EVENT_ID, "ServiceOrderCancelled", SERVICE_ORDER_ID);
 
     @Mock
     private ServiceOrderExecutionRepository repository;
+
+    @Mock
+    private ProcessedEventRepository processedEventRepository;
 
     @InjectMocks
     private CancelPendingExecutionsService cancelPendingService;
 
     @Captor
     private ArgumentCaptor<Collection<ServiceOrderExecutionStatus>> statusesCaptor;
+
+    @Captor
+    private ArgumentCaptor<ProcessedEvent> processedEventCaptor;
 
     @Nested
     class Execute {
@@ -49,7 +62,7 @@ class CancelPendingExecutionsServiceTest {
             when(repository.findByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
                     .thenReturn(List.of());
 
-            cancelPendingService.execute(SERVICE_ORDER_ID);
+            cancelPendingService.execute(COMMAND);
 
             verify(repository).findByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), statusesCaptor.capture());
             assertThat(statusesCaptor.getValue())
@@ -63,7 +76,7 @@ class CancelPendingExecutionsServiceTest {
             when(repository.findByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
                     .thenReturn(List.of(pending, inProgress));
 
-            cancelPendingService.execute(SERVICE_ORDER_ID);
+            cancelPendingService.execute(COMMAND);
 
             assertThat(pending.getStatus()).isEqualTo(ServiceOrderExecutionStatus.CANCELLED);
             assertThat(pending.getFinishedAt()).isNotNull();
@@ -80,7 +93,7 @@ class CancelPendingExecutionsServiceTest {
             when(repository.findByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
                     .thenReturn(List.of(inProgress));
 
-            cancelPendingService.execute(SERVICE_ORDER_ID);
+            cancelPendingService.execute(COMMAND);
 
             assertThat(inProgress.getStartedAt()).isEqualTo(startedAt);
             assertThat(inProgress.getFinishedAt()).isAfter(startedAt);
@@ -91,7 +104,7 @@ class CancelPendingExecutionsServiceTest {
             when(repository.findByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
                     .thenReturn(List.of());
 
-            cancelPendingService.execute(SERVICE_ORDER_ID);
+            cancelPendingService.execute(COMMAND);
 
             verify(repository, never()).save(any());
         }
@@ -102,11 +115,44 @@ class CancelPendingExecutionsServiceTest {
             when(repository.findByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
                     .thenReturn(List.of(completed));
 
-            assertThatThrownBy(() -> cancelPendingService.execute(SERVICE_ORDER_ID))
+            assertThatThrownBy(() -> cancelPendingService.execute(COMMAND))
                     .isInstanceOf(InvalidServiceOrderExecutionTransitionException.class);
 
             assertThat(completed.getStatus()).isEqualTo(ServiceOrderExecutionStatus.COMPLETED);
             verify(repository, never()).save(any());
+            verify(processedEventRepository, never()).save(any());
+        }
+
+        @Test
+        void shouldRecordProcessedEventAfterCancelling() {
+            when(repository.findByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
+                    .thenReturn(List.of(createServiceOrderExecution(ServiceOrderExecutionStatus.PENDING, null)));
+
+            cancelPendingService.execute(COMMAND);
+
+            verify(processedEventRepository).save(processedEventCaptor.capture());
+            assertThat(processedEventCaptor.getValue().getEventId()).isEqualTo(EVENT_ID);
+            assertThat(processedEventCaptor.getValue().getEventType()).isEqualTo("ServiceOrderCancelled");
+        }
+
+        @Test
+        void shouldRecordProcessedEventEvenWhenNoActiveExecutionsFound() {
+            when(repository.findByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
+                    .thenReturn(List.of());
+
+            cancelPendingService.execute(COMMAND);
+
+            verify(processedEventRepository).save(any());
+        }
+
+        @Test
+        void shouldSkipWhenEventWasAlreadyProcessed() {
+            when(processedEventRepository.existsById(EVENT_ID)).thenReturn(true);
+
+            cancelPendingService.execute(COMMAND);
+
+            verifyNoInteractions(repository);
+            verify(processedEventRepository, never()).save(any());
         }
     }
 
