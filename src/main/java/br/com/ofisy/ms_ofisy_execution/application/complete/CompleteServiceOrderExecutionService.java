@@ -36,14 +36,16 @@ public class CompleteServiceOrderExecutionService implements CompleteServiceOrde
         execution.complete();
         ServiceOrderExecution savedExecution = repository.save(execution);
 
-        if (allCompleted(executions)) {
+        if (allFinished(executions)) {
             outboxEventRepository.save(OutboxEvent.create(ALL_EXECUTIONS_COMPLETED, savedExecution.getServiceOrderId(), Map.of()));
         }
 
         return savedExecution;
     }
 
-    private boolean allCompleted(List<ServiceOrderExecution> executions) {
-        return executions.stream().allMatch(e -> e.getStatus() == ServiceOrderExecutionStatus.COMPLETED);
+    // canceladas nao impedem a OS de finalizar
+    private boolean allFinished(List<ServiceOrderExecution> executions) {
+        return executions.stream().allMatch(e -> e.getStatus() == ServiceOrderExecutionStatus.COMPLETED
+                || e.getStatus() == ServiceOrderExecutionStatus.CANCELLED);
     }
 }
