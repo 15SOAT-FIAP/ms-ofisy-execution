@@ -26,7 +26,7 @@ A separação é feita pelo nome: classes terminadas em `IT` são excluídas do 
 | Domínio      | `ServiceOrderExecutionTest`, `ServiceOrderExecutionStatusTest`, `ProcessedEventTest`, `OutboxEventTest` | Unitário                                                                    |
 | Casos de uso | Um `*ServiceTest` por caso de uso em `application/`                                                     | Unitário, com repositórios mockados                                         |
 | Gateways     | `*MapperTest`, `*RepositoryImplTest`                                                                    | Unitário                                                                    |
-| Listeners    | `ExecutionEventsListenerTest`, `QuoteApprovedHandlerTest`                                               | Unitário                                                                    |
+| Listeners    | `ExecutionEventsListenerTest`, `QuoteApprovedHandlerTest`, `ServiceOrderCancelledHandlerTest`           | Unitário                                                                    |
 | Listeners    | `ExecutionEventsListenerIT`                                                                             | Integração (SQS + PostgreSQL reais)                                         |
 | Publishers   | `OutboxEventPublisherTest`                                                                              | Unitário, com SNS e JPA mockados                                            |
 | Publishers   | `OutboxEventPublisherIT`                                                                                | Integração (SNS + SQS + PostgreSQL reais)                                   |
@@ -40,6 +40,7 @@ A separação é feita pelo nome: classes terminadas em `IT` são excluídas do 
 O `ExecutionEventsListenerIT` publica mensagens direto na fila do LocalStack e usa **Awaitility** para esperar o processamento assíncrono. Cenários cobertos:
 
 - o mesmo `QuoteApproved` entregue duas vezes cria as execuções só uma vez;
+- o mesmo `ServiceOrderCancelled` entregue duas vezes cancela as execuções `PENDING` e `IN_PROGRESS` da OS só uma vez e mantém a `COMPLETED`;
 - um evento sem handler é confirmado e não altera o banco.
 
 O `OutboxEventPublisherIT` grava um evento pelo `OutboxEventRepository` e espera recebê-lo na fila de inspeção `ofisy-execution-events-inspect.fifo`, assinada no tópico do ms. Ele confere o envelope recebido e que o registro foi marcado como publicado.
