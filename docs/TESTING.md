@@ -50,6 +50,7 @@ O `ServiceOrderExecutionControllerIT` sobe a aplicação em porta aleatória e c
 - iniciar uma execução já iniciada devolve `409`, sem novo evento;
 - iniciar uma execução inexistente devolve `404`;
 - concluir a primeira de duas execuções não grava evento, e concluir a segunda grava um `AllExecutionsCompleted`;
+- concluir uma execução quando as demais da OS estão canceladas grava um `AllExecutionsCompleted`;
 - concluir uma execução já concluída ou ainda `PENDING` devolve `409`, e uma inexistente devolve `404`;
 - concluir as duas últimas execuções da OS em paralelo grava um único `AllExecutionsCompleted`, exercitando o lock no PostgreSQL real.
 

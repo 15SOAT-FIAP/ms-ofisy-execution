@@ -71,10 +71,10 @@ Todo evento segue o mesmo envelope (`adapters/listeners/dto/EventEnvelope.java`)
 
 Todos saem pelo outbox, descrito em [Publicação de eventos](#publicação-de-eventos-outbox).
 
-| Evento                   | Quando é publicado                                                   | Quem reage                                                 |
-|--------------------------|----------------------------------------------------------------------|------------------------------------------------------------|
-| `ExecutionStarted`       | Ao iniciar a **primeira** execução de uma OS (`PATCH /{id}/start`)   | Core: move a OS de `AWAITING_EXECUTION` para `IN_PROGRESS` |
-| `AllExecutionsCompleted` | Ao concluir a **última** execução de uma OS (`PATCH /{id}/complete`) | Core: move a OS de `IN_PROGRESS` para `FINISHED`           |
+| Evento                   | Quando é publicado                                                                                      | Quem reage                                                 |
+|--------------------------|---------------------------------------------------------------------------------------------------------|------------------------------------------------------------|
+| `ExecutionStarted`       | Ao iniciar a **primeira** execução de uma OS (`PATCH /{id}/start`)                                      | Core: move a OS de `AWAITING_EXECUTION` para `IN_PROGRESS` |
+| `AllExecutionsCompleted` | Ao concluir a **última** execução pendente de uma OS, sem contar as canceladas (`PATCH /{id}/complete`) | Core: move a OS de `IN_PROGRESS` para `FINISHED`           |
 
 #### `ExecutionStarted`
 
@@ -96,7 +96,7 @@ O payload é vazio: o core só precisa do `serviceOrderId`, que já vem no envel
 
 #### `AllExecutionsCompleted`
 
-Segue a mesma regra do core: depois de concluir uma execução, se **todas** as execuções da OS estão `COMPLETED` (e existe pelo menos uma), o evento é gravado no outbox na mesma transação. O payload é vazio, como no `ExecutionStarted`.
+Depois de concluir uma execução, se **nenhuma** execução da OS está `PENDING` ou `IN_PROGRESS` (ou seja, todas estão `COMPLETED` ou `CANCELLED`), o evento é gravado no outbox na mesma transação. Sempre existe pelo menos uma concluída, a que acabou de ser concluída. O payload é vazio, como no `ExecutionStarted`.
 
 ```json
 {
@@ -108,7 +108,7 @@ Segue a mesma regra do core: depois de concluir uma execução, se **todas** as 
 }
 ```
 
-**Execução cancelada:** como no core, uma execução `CANCELLED` impede que a OS chegue a "todas concluídas", e o evento não é publicado. A regra foi mantida de propósito, para não divergir do core.
+**Execução cancelada:** aqui a regra diverge do core de propósito. No core, uma execução `CANCELLED` impede a OS de chegar a "todas concluídas", e a OS fica parada para sempre. Neste ms, as execuções são canceladas por eventos (por exemplo, serviços retirados do orçamento), então elas não contam para a regra. Uma OS que só tem execuções canceladas nunca passa por aqui, porque nenhuma execução é concluída.
 
 **Concorrência:** sem cuidado, as duas últimas execuções concluídas ao mesmo tempo não enxergariam uma à outra, nenhuma publicaria o evento e a OS ficaria parada (o core tem esse risco). Por isso, a conclusão trava todas as execuções da OS com `SELECT ... FOR UPDATE` (`lockAllFromSameServiceOrder`, ordenado por `id` para evitar deadlock) antes de verificar a regra. As conclusões de uma mesma OS são serializadas, e a última sempre vê as anteriores e publica um único evento.
 
