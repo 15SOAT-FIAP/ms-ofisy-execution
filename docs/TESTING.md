@@ -51,7 +51,14 @@ O `ServiceOrderExecutionControllerIT` sobe a aplicação em porta aleatória e c
 - iniciar uma execução inexistente devolve `404`;
 - concluir a primeira de duas execuções não grava evento, e concluir a segunda grava um `AllExecutionsCompleted`;
 - concluir uma execução já concluída ou ainda `PENDING` devolve `409`, e uma inexistente devolve `404`;
-- concluir as duas últimas execuções da OS em paralelo grava um único `AllExecutionsCompleted`, exercitando o lock no PostgreSQL real.
+- concluir as duas últimas execuções da OS em paralelo grava um único `AllExecutionsCompleted`, exercitando o lock no PostgreSQL real;
+- listar todas usa 10 por página por padrão e respeita o `size` informado;
+- buscar por id devolve a execução, `404` se não existir e `400` se o id não for UUID;
+- listar por OS e por serviço do catálogo devolve só as execuções daquela OS ou serviço;
+- listar por status filtra sem diferenciar maiúsculas, e um status inválido devolve `400`;
+- o tempo médio considera só as execuções finalizadas (60 e 45 min dão `52.5`) e devolve `0.0` quando o serviço não tem execuções.
+
+Como o banco é compartilhado entre os testes e tem a massa do V2, cada cenário cria as próprias execuções com IDs aleatórios e só faz asserções sobre elas.
 
 ---
 
