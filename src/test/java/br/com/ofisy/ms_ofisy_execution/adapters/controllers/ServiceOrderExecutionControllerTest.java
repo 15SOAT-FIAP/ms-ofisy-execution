@@ -2,6 +2,12 @@ package br.com.ofisy.ms_ofisy_execution.adapters.controllers;
 
 import br.com.ofisy.ms_ofisy_execution.application.complete.CompleteServiceOrderExecutionUseCase;
 import br.com.ofisy.ms_ofisy_execution.application.exception.ServiceOrderExecutionNotFoundException;
+import br.com.ofisy.ms_ofisy_execution.application.getaverageexecutiontime.GetAverageExecutionTimeServiceOrderExecutionUseCase;
+import br.com.ofisy.ms_ofisy_execution.application.identifybyid.IdentifyByIdServiceOrderExecutionUseCase;
+import br.com.ofisy.ms_ofisy_execution.application.list.ListServiceOrderExecutionUseCase;
+import br.com.ofisy.ms_ofisy_execution.application.listbyservicecatalogid.ListByServiceCatalogIdServiceOrderExecutionUseCase;
+import br.com.ofisy.ms_ofisy_execution.application.listbyserviceorderid.ListByServiceOrderIdServiceOrderExecutionUseCase;
+import br.com.ofisy.ms_ofisy_execution.application.listbystatus.ListByStatusServiceOrderExecutionUseCase;
 import br.com.ofisy.ms_ofisy_execution.application.start.StartServiceOrderExecutionUseCase;
 import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecution;
 import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecutionStatus;
@@ -37,6 +43,24 @@ class ServiceOrderExecutionControllerTest {
 
     @MockitoBean
     private CompleteServiceOrderExecutionUseCase completeServiceOrderExecutionUseCase;
+
+    @MockitoBean
+    private ListServiceOrderExecutionUseCase listServiceOrderExecutionUseCase;
+
+    @MockitoBean
+    private IdentifyByIdServiceOrderExecutionUseCase identifyByIdServiceOrderExecutionUseCase;
+
+    @MockitoBean
+    private ListByServiceCatalogIdServiceOrderExecutionUseCase listByServiceCatalogIdUseCase;
+
+    @MockitoBean
+    private ListByStatusServiceOrderExecutionUseCase listByStatusUseCase;
+
+    @MockitoBean
+    private ListByServiceOrderIdServiceOrderExecutionUseCase listByServiceOrderIdUseCase;
+
+    @MockitoBean
+    private GetAverageExecutionTimeServiceOrderExecutionUseCase getAverageExecutionTimeUseCase;
 
     @Nested
     class Complete {

@@ -54,7 +54,8 @@ br.com.ofisy.ms_ofisy_execution
 | Dependência          | Descrição                                                                | Artefato                                                                                                                  |
 |----------------------|--------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|
 | Spring Cloud AWS SQS | Consumo das mensagens da fila via `@SqsListener`                         | `spring-cloud-aws-starter-sqs`                                                                                            |
-| Spring Web MVC       | Servidor web e base para as futuras APIs REST                            | `spring-boot-starter-webmvc`                                                                                              |
+| Spring Web MVC       | Servidor web e API REST                                                  | `spring-boot-starter-webmvc`                                                                                              |
+| OpenAPI / Swagger    | Documentação da API e Swagger UI                                         | `springdoc-openapi-starter-webmvc-ui`                                                                                     |
 | Spring Data JPA      | Persistência e mapeamento ORM                                            | `spring-boot-starter-data-jpa`                                                                                            |
 | Spring Validation    | Validação de DTOs e beans                                                | `spring-boot-starter-validation`                                                                                          |
 | Spring Actuator      | Endpoint de saúde (`/actuator/health`)                                   | `spring-boot-starter-actuator`                                                                                            |
@@ -65,6 +66,7 @@ br.com.ofisy.ms_ofisy_execution
 | Spring Boot DevTools | Reinício automático durante o desenvolvimento                            | `spring-boot-devtools`                                                                                                    |
 | Testcontainers       | PostgreSQL e LocalStack reais nos testes de integração                   | `spring-boot-testcontainers`, `testcontainers-postgresql`, `testcontainers-localstack`, `spring-cloud-aws-testcontainers` |
 | Awaitility           | Asserções sobre o processamento assíncrono da fila                       | `awaitility`                                                                                                              |
+| REST Assured         | Testes de integração da API contra a aplicação em porta aleatória        | `rest-assured`                                                                                                            |
 | JaCoCo               | Relatório de cobertura e gate mínimo de 80%                              | `jacoco-maven-plugin`                                                                                                     |
 
 ---
@@ -143,10 +145,22 @@ A aplicação fica disponível em `http://localhost:8081`.
 
 ### API
 
-| Método  | Rota                                             | Descrição                                                                                              |
-|---------|--------------------------------------------------|--------------------------------------------------------------------------------------------------------|
-| `PATCH` | `/api/v1/service_order_executions/{id}/start`    | Inicia uma execução `PENDING`. Responde `404` se não existir e `409` se não estiver `PENDING`          |
-| `PATCH` | `/api/v1/service_order_executions/{id}/complete` | Conclui uma execução `IN_PROGRESS`. Responde `404` se não existir e `409` se não estiver `IN_PROGRESS` |
+A documentação interativa fica no Swagger UI, em `http://localhost:8080/swagger-ui.html` (ou na porta `8081` pelo `compose.yaml`).
+
+Base: `/api/v1/service_order_executions`
+
+| Método  | Rota                                         | Descrição                                                                                              |
+|---------|----------------------------------------------|--------------------------------------------------------------------------------------------------------|
+| `GET`   | `/`                                          | Lista as execuções, paginado (`page`, `size`, `sort`; 10 por página por padrão)                        |
+| `GET`   | `/{id}`                                      | Busca uma execução. Responde `404` se não existir                                                      |
+| `GET`   | `/?serviceCatalogId={id}`                    | Lista as execuções de um serviço do catálogo, paginado                                                 |
+| `GET`   | `/?status={status}`                          | Lista as execuções de um status, paginado e sem diferenciar maiúsculas. Responde `400` se o status for inválido |
+| `GET`   | `/service_order/{id}`                        | Lista as execuções de uma OS, paginado                                                                 |
+| `GET`   | `/execution_time_average/{serviceCatalogId}` | Tempo médio, em minutos, das execuções finalizadas de um serviço do catálogo (`0.0` se não houver)     |
+| `PATCH` | `/{id}/start`                                | Inicia uma execução `PENDING`. Responde `404` se não existir e `409` se não estiver `PENDING`          |
+| `PATCH` | `/{id}/complete`                             | Conclui uma execução `IN_PROGRESS`. Responde `404` se não existir e `409` se não estiver `IN_PROGRESS` |
+
+Não há rota de criação nem de cancelamento: as execuções são criadas pelo evento `QuoteApproved` e o cancelamento virá do evento de OS cancelada ([MESSAGING.md](docs/MESSAGING.md)).
 
 Erros seguem o formato `ProblemDetail` (RFC 9457), com `title` e `detail`. A autenticação JWT ainda não está aplicada às rotas.
 
