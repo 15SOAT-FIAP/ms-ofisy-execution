@@ -10,20 +10,23 @@ O ms-ofisy-execution se comunica com os demais microsserviços por eventos, usan
 flowchart LR
     billing[ms de billing] -->|publica| topic[(SNS<br/>ofisy-billing-events.fifo)]
     topic -->|assinatura<br/>filtro type = QuoteApproved<br/>raw delivery| queue[(SQS<br/>ofisy-execution.fifo)]
+    core[core] -->|publica| soTopic[(SNS<br/>ofisy-service-order-events.fifo)]
+    soTopic -->|assinatura<br/>filtro type = ServiceOrderCancelled<br/>raw delivery| queue
     queue -->|após 5 recebimentos| dlq[(SQS<br/>ofisy-execution-dlq.fifo)]
     queue --> app[ms-ofisy-execution]
     app -->|outbox + publisher| execTopic[(SNS<br/>ofisy-execution-events.fifo)]
     execTopic -.->|só local, raw delivery| inspect[(SQS<br/>ofisy-execution-events-inspect.fifo)]
 ```
 
-| Recurso          | Nome                                  | Observação                                                                               |
-|------------------|---------------------------------------|------------------------------------------------------------------------------------------|
-| Tópico           | `ofisy-billing-events.fifo`           | Pertence ao ms de billing na AWS. Localmente é criado só para exercitar o fluxo          |
-| Assinatura       | tópico → fila                         | `RawMessageDelivery=true` e `FilterPolicy` aplicada ao corpo da mensagem (`MessageBody`) |
-| Fila             | `ofisy-execution.fifo`                | Configurada em `ofisy.messaging.queues.execution` (`application.yaml`)                   |
-| DLQ              | `ofisy-execution-dlq.fifo`            | `RedrivePolicy` com `maxReceiveCount=5`                                                  |
-| Tópico           | `ofisy-execution-events.fifo`         | Tópico deste ms, configurado em `ofisy.messaging.topics.execution`                       |
-| Fila de inspeção | `ofisy-execution-events-inspect.fifo` | Só local. Assinada no tópico deste ms para ver o que foi publicado                       |
+| Recurso          | Nome                                  | Observação                                                                                                   |
+|------------------|---------------------------------------|--------------------------------------------------------------------------------------------------------------|
+| Tópico           | `ofisy-billing-events.fifo`           | Pertence ao ms de billing na AWS. Localmente é criado só para exercitar o fluxo                              |
+| Tópico           | `ofisy-service-order-events.fifo`     | Eventos da OS, publicados pelo core na AWS. Localmente é criado só para exercitar o fluxo                    |
+| Assinaturas      | tópicos → fila                        | Uma por tópico, com `RawMessageDelivery=true` e `FilterPolicy` aplicada ao corpo da mensagem (`MessageBody`) |
+| Fila             | `ofisy-execution.fifo`                | Configurada em `ofisy.messaging.queues.execution` (`application.yaml`)                                       |
+| DLQ              | `ofisy-execution-dlq.fifo`            | `RedrivePolicy` com `maxReceiveCount=5`                                                                      |
+| Tópico           | `ofisy-execution-events.fifo`         | Tópico deste ms, configurado em `ofisy.messaging.topics.execution`                                           |
+| Fila de inspeção | `ofisy-execution-events-inspect.fifo` | Só local. Assinada no tópico deste ms para ver o que foi publicado                                           |
 
 Localmente, tudo é criado pelo `localstack/init/ready.d/01-messaging.sh`, que roda quando o LocalStack sobe. Com `queue-not-found-strategy: fail`, a aplicação não inicia se a fila não existir.
 
@@ -45,9 +48,10 @@ Todo evento segue o mesmo envelope (`adapters/listeners/dto/EventEnvelope.java`)
 
 ### Eventos consumidos
 
-| Evento          | Produtor       | Efeito                                                                           |
-|-----------------|----------------|----------------------------------------------------------------------------------|
-| `QuoteApproved` | ms de billing  | Cria uma execução `PENDING` para cada `serviceCatalogId` dos itens do orçamento  |
+| Evento                  | Produtor      | Efeito                                                                                    |
+|-------------------------|---------------|-------------------------------------------------------------------------------------------|
+| `QuoteApproved`         | ms de billing | Cria uma execução `PENDING` para cada `serviceCatalogId` dos itens do orçamento           |
+| `ServiceOrderCancelled` | core          | Cancela as execuções `PENDING` e `IN_PROGRESS` da OS. As `COMPLETED` continuam como estão |
 
 #### `QuoteApproved`
 
@@ -64,6 +68,22 @@ Todo evento segue o mesmo envelope (`adapters/listeners/dto/EventEnvelope.java`)
       { "serviceCatalogId": "b1c2d3e4-f5a6-7890-bcde-f12345678902" }
     ]
   }
+}
+```
+
+#### `ServiceOrderCancelled`
+
+Segue a mesma regra do core: ao cancelar a OS, o `CancelServiceOrderService` chama o `CancelPendingExecutionsUseCase`, que cancela todas as execuções ativas (`PENDING` e `IN_PROGRESS`) e preserva as já concluídas. Aqui o mesmo caso de uso é acionado pelo evento, via `ServiceOrderCancelledHandler`. Nenhum evento é publicado de volta.
+
+O payload é vazio: o cancelamento só precisa do `serviceOrderId`, que já vem no envelope.
+
+```json
+{
+  "eventId": "5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b",
+  "type": "ServiceOrderCancelled",
+  "serviceOrderId": "c3d4e5f6-a7b8-9012-cdef-123456780001",
+  "occurredAt": "2026-10-20T10:00:00Z",
+  "payload": {}
 }
 ```
 
@@ -145,6 +165,8 @@ sequenceDiagram
     end
 ```
 
+O diagrama mostra o `QuoteApproved`. O `ServiceOrderCancelled` segue o mesmo caminho: o `ServiceOrderCancelledHandler` chama o `CancelPendingExecutionsService`, que confere o `processed_events`, cancela as execuções ativas e registra o evento na mesma transação.
+
 O `ExecutionEventsListener` não conhece os eventos: ele recebe todos os `EventHandler` registrados no Spring e despacha pelo `type`. Cada tipo de evento tem seu próprio handler em `adapters/listeners/handlers/`.
 
 ### Ordenação
@@ -153,11 +175,12 @@ As mensagens são publicadas com `message-group-id = serviceOrderId`. Assim, eve
 
 ### Idempotência
 
-A entrega do SQS é *at-least-once*, então um mesmo evento pode chegar mais de uma vez (por exemplo, reentrega fora da janela de deduplicação de 5 minutos da fila FIFO). A proteção tem três camadas:
+A entrega do SQS é *at-least-once*, então um mesmo evento pode chegar mais de uma vez (por exemplo, reentrega fora da janela de deduplicação de 5 minutos da fila FIFO). Todo evento consumido é registrado em **`processed_events`** na mesma transação do seu efeito. Se o `eventId` já existir, o evento é descartado sem efeito.
 
-1. **`processed_events`**: o `eventId` é registrado na mesma transação que cria as execuções. Se já existir, o evento é descartado.
-2. **Checagem por OS + serviço**: antes de criar cada execução, o caso de uso verifica se já existe uma para o par `serviceOrderId` + `serviceCatalogId`. Também remove IDs de catálogo duplicados do payload.
-3. **Constraint `UNIQUE (service_order_id, service_catalog_id)`**: última barreira no banco ([DATABASE.md](DATABASE.md)).
+No `QuoteApproved`, a proteção tem mais duas camadas:
+
+1. **Checagem por OS + serviço**: antes de criar cada execução, o caso de uso verifica se já existe uma para o par `serviceOrderId` + `serviceCatalogId`. Também remove IDs de catálogo duplicados do payload.
+2. **Constraint `UNIQUE (service_order_id, service_catalog_id)`**: última barreira no banco ([DATABASE.md](DATABASE.md)).
 
 ### Falhas e DLQ
 
@@ -233,19 +256,20 @@ O envelope publicado é o mesmo `EventEnvelope` que este ms consome, então quem
 
 Com o ambiente de desenvolvimento no ar (`make dev-up` + `make run`):
 
-| Comando                     | O que faz                                                                                                          |
-|-----------------------------|--------------------------------------------------------------------------------------------------------------------|
-| `make event-quote-approved` | Publica um `QuoteApproved` no tópico. Aceita `EVENT_ID`, `SERVICE_ORDER_ID` e `CATALOG_IDS` (separados por espaço) |
-| `make event-ignored`        | Publica um `QuoteRejected`, que a `FilterPolicy` descarta antes de chegar na fila                                  |
-| `make event-invalid`        | Envia uma mensagem inválida direto na fila, que vai para a DLQ após 5 tentativas (~2,5 min)                        |
-| `make queue-status`         | Mostra as mensagens visíveis e em processamento na fila e na DLQ                                                   |
-| `make dlq-peek`             | Lista as mensagens da DLQ sem removê-las                                                                           |
-| `make dlq-redrive`          | Devolve as mensagens da DLQ para a fila principal                                                                  |
-| `make dlq-purge`            | Apaga todas as mensagens da DLQ                                                                                    |
-| `make db-executions`        | Lista as execuções de uma OS (`SERVICE_ORDER_ID` obrigatório)                                                      |
-| `make db-processed-events`  | Lista os últimos eventos processados                                                                               |
-| `make db-outbox`            | Lista os últimos eventos do outbox e se já foram publicados                                                        |
-| `make events-peek`          | Lista os eventos publicados no tópico deste ms, pela fila de inspeção                                              |
+| Comando                              | O que faz                                                                                                          |
+|--------------------------------------|--------------------------------------------------------------------------------------------------------------------|
+| `make event-quote-approved`          | Publica um `QuoteApproved` no tópico. Aceita `EVENT_ID`, `SERVICE_ORDER_ID` e `CATALOG_IDS` (separados por espaço) |
+| `make event-service-order-cancelled` | Publica um `ServiceOrderCancelled` no tópico de OS. Exige `SERVICE_ORDER_ID` e aceita `EVENT_ID`                   |
+| `make event-ignored`                 | Publica um `QuoteRejected`, que a `FilterPolicy` descarta antes de chegar na fila                                  |
+| `make event-invalid`                 | Envia uma mensagem inválida direto na fila, que vai para a DLQ após 5 tentativas (~2,5 min)                        |
+| `make queue-status`                  | Mostra as mensagens visíveis e em processamento na fila e na DLQ                                                   |
+| `make dlq-peek`                      | Lista as mensagens da DLQ sem removê-las                                                                           |
+| `make dlq-redrive`                   | Devolve as mensagens da DLQ para a fila principal                                                                  |
+| `make dlq-purge`                     | Apaga todas as mensagens da DLQ                                                                                    |
+| `make db-executions`                 | Lista as execuções de uma OS (`SERVICE_ORDER_ID` obrigatório)                                                      |
+| `make db-processed-events`           | Lista os últimos eventos processados                                                                               |
+| `make db-outbox`                     | Lista os últimos eventos do outbox e se já foram publicados                                                        |
+| `make events-peek`                   | Lista os eventos publicados no tópico deste ms, pela fila de inspeção                                              |
 
 ### Exemplo: verificando a idempotência
 

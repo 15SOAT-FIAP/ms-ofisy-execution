@@ -1,5 +1,5 @@
 .PHONY: help dev-up dev-down run test verify \
-	event-quote-approved event-ignored event-invalid \
+	event-quote-approved event-service-order-cancelled event-ignored event-invalid \
 	queue-status dlq-peek dlq-redrive dlq-purge events-peek \
 	db-executions db-processed-events db-outbox
 
@@ -38,6 +38,11 @@ verify: ## Roda testes unitários, de integração e o gate de cobertura
 event-quote-approved: ## Publica um QuoteApproved no SNS (EVENT_ID, SERVICE_ORDER_ID, CATALOG_IDS opcionais)
 	@LOCALSTACK_CONTAINER=$(LOCALSTACK_CONTAINER) EVENT_ID=$(EVENT_ID) SERVICE_ORDER_ID=$(SERVICE_ORDER_ID) \
 	CATALOG_IDS="$(CATALOG_IDS)" TYPE=QuoteApproved scripts/publish-event.sh
+
+event-service-order-cancelled: ## Publica um ServiceOrderCancelled no tópico de OS (SERVICE_ORDER_ID obrigatório, EVENT_ID opcional)
+	@test -n "$(SERVICE_ORDER_ID)" || (echo "Informe SERVICE_ORDER_ID=<uuid>" && exit 1)
+	@LOCALSTACK_CONTAINER=$(LOCALSTACK_CONTAINER) EVENT_ID=$(EVENT_ID) SERVICE_ORDER_ID=$(SERVICE_ORDER_ID) \
+	TOPIC=ofisy-service-order-events.fifo TYPE=ServiceOrderCancelled scripts/publish-event.sh
 
 event-ignored: ## Publica um QuoteRejected no SNS, que o filtro da assinatura deve descartar
 	@LOCALSTACK_CONTAINER=$(LOCALSTACK_CONTAINER) TYPE=QuoteRejected scripts/publish-event.sh
