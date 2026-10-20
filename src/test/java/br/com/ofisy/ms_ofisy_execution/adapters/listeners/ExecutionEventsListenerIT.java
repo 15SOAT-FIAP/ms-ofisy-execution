@@ -3,6 +3,8 @@ package br.com.ofisy.ms_ofisy_execution.adapters.listeners;
 import br.com.ofisy.ms_ofisy_execution.TestcontainersConfiguration;
 import br.com.ofisy.ms_ofisy_execution.adapters.gateways.JpaProcessedEventRepository;
 import br.com.ofisy.ms_ofisy_execution.adapters.gateways.JpaServiceOrderExecutionRepository;
+import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecution;
+import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecutionRepository;
 import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecutionStatus;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,6 +33,9 @@ class ExecutionEventsListenerIT {
 
     @Autowired
     private JpaProcessedEventRepository processedEventRepository;
+
+    @Autowired
+    private ServiceOrderExecutionRepository serviceOrderExecutionRepository;
 
     @Value("${ofisy.messaging.queues.execution}")
     private String queueName;
@@ -75,6 +80,51 @@ class ExecutionEventsListenerIT {
         await().atMost(Duration.ofSeconds(30)).untilAsserted(() -> assertThat(pendingMessages(queueUrl)).isZero());
         assertThat(processedEventRepository.existsById(eventId)).isFalse();
         assertThat(executionRepository.countByServiceOrderId(serviceOrderId)).isZero();
+    }
+
+    @Test
+    void shouldCancelOnlyActiveExecutionsOnceWhenServiceOrderCancelledIsDeliveredTwice() {
+        UUID eventId = UUID.randomUUID();
+        UUID serviceOrderId = UUID.randomUUID();
+        UUID pendingId = saveExecution(serviceOrderId, ServiceOrderExecutionStatus.PENDING);
+        UUID inProgressId = saveExecution(serviceOrderId, ServiceOrderExecutionStatus.IN_PROGRESS);
+        UUID completedId = saveExecution(serviceOrderId, ServiceOrderExecutionStatus.COMPLETED);
+        String body = """
+                {
+                  "eventId": "%s",
+                  "type": "ServiceOrderCancelled",
+                  "serviceOrderId": "%s",
+                  "occurredAt": "2026-10-20T10:00:00Z",
+                  "payload": {}
+                }
+                """.formatted(eventId, serviceOrderId);
+        String queueUrl = queueUrl();
+
+        send(queueUrl, serviceOrderId, body);
+        send(queueUrl, serviceOrderId, body);
+
+        await().atMost(Duration.ofSeconds(30)).untilAsserted(() -> {
+            assertThat(pendingMessages(queueUrl)).isZero();
+            assertThat(processedEventRepository.existsById(eventId)).isTrue();
+        });
+        assertThat(statusOf(pendingId)).isEqualTo(ServiceOrderExecutionStatus.CANCELLED);
+        assertThat(statusOf(inProgressId)).isEqualTo(ServiceOrderExecutionStatus.CANCELLED);
+        assertThat(statusOf(completedId)).isEqualTo(ServiceOrderExecutionStatus.COMPLETED);
+    }
+
+    private UUID saveExecution(UUID serviceOrderId, ServiceOrderExecutionStatus status) {
+        ServiceOrderExecution execution = ServiceOrderExecution.create(UUID.randomUUID(), serviceOrderId);
+        if (status != ServiceOrderExecutionStatus.PENDING) {
+            execution.start();
+        }
+        if (status == ServiceOrderExecutionStatus.COMPLETED) {
+            execution.complete();
+        }
+        return serviceOrderExecutionRepository.save(execution).getId();
+    }
+
+    private ServiceOrderExecutionStatus statusOf(UUID executionId) {
+        return serviceOrderExecutionRepository.findById(executionId).orElseThrow().getStatus();
     }
 
     private String quoteApprovedBody(UUID eventId, UUID serviceOrderId, UUID firstCatalogId, UUID secondCatalogId) {
