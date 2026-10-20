@@ -94,10 +94,24 @@ class CompleteServiceOrderExecutionServiceTest {
         }
 
         @Test
-        void shouldNotRecordEventWhenAnotherExecutionOfTheServiceOrderIsCancelled() {
+        void shouldRecordAllExecutionsCompletedIgnoringCancelledExecutions() {
             var execution = createServiceOrderExecution(VALID_ID, ServiceOrderExecutionStatus.IN_PROGRESS);
             var cancelled = createServiceOrderExecution(UUID.randomUUID(), ServiceOrderExecutionStatus.CANCELLED);
             when(repository.lockAllFromSameServiceOrder(VALID_ID)).thenReturn(List.of(execution, cancelled));
+            when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            completeService.execute(VALID_ID);
+
+            verify(outboxEventRepository).save(outboxEventCaptor.capture());
+            assertThat(outboxEventCaptor.getValue().getEventType()).isEqualTo(CompleteServiceOrderExecutionService.ALL_EXECUTIONS_COMPLETED);
+        }
+
+        @Test
+        void shouldNotRecordEventWhenServiceOrderHasCancelledAndPendingExecutions() {
+            var execution = createServiceOrderExecution(VALID_ID, ServiceOrderExecutionStatus.IN_PROGRESS);
+            var cancelled = createServiceOrderExecution(UUID.randomUUID(), ServiceOrderExecutionStatus.CANCELLED);
+            var pending = createServiceOrderExecution(UUID.randomUUID(), ServiceOrderExecutionStatus.PENDING);
+            when(repository.lockAllFromSameServiceOrder(VALID_ID)).thenReturn(List.of(execution, cancelled, pending));
             when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
             completeService.execute(VALID_ID);

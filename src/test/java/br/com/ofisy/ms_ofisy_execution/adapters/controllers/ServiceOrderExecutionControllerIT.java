@@ -118,6 +118,19 @@ class ServiceOrderExecutionControllerIT {
         }
 
         @Test
+        void shouldRecordAllExecutionsCompletedWhenRemainingExecutionsAreCancelled() {
+            ServiceOrderExecution second = executionRepository.findById(secondExecutionId).orElseThrow();
+            second.cancel();
+            executionRepository.save(second);
+
+            complete(firstExecutionId)
+                    .statusCode(200)
+                    .body("status", equalTo("COMPLETED"));
+
+            assertThat(allExecutionsCompletedEventsOf(serviceOrderId)).hasSize(1);
+        }
+
+        @Test
         void shouldReturn409WhenExecutionIsAlreadyCompleted() {
             complete(firstExecutionId).statusCode(200);
 
