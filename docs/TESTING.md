@@ -21,19 +21,19 @@ A separação é feita pelo nome: classes terminadas em `IT` são excluídas do 
 
 ## Estrutura dos testes
 
-| Camada                | Testes                                                                                        | Tipo                                   |
-|-----------------------|-----------------------------------------------------------------------------------------------|----------------------------------------|
-| Domínio               | `ServiceOrderExecutionTest`, `ServiceOrderExecutionStatusTest`, `ProcessedEventTest`, `OutboxEventTest` | Unitário                     |
-| Casos de uso          | Um `*ServiceTest` por caso de uso em `application/`                                           | Unitário, com repositórios mockados    |
-| Gateways              | `*MapperTest`, `*RepositoryImplTest`                                                          | Unitário                               |
-| Listeners             | `ExecutionEventsListenerTest`, `QuoteApprovedHandlerTest`                                     | Unitário                               |
-| Listeners             | `ExecutionEventsListenerIT`                                                                   | Integração (SQS + PostgreSQL reais)    |
-| Publishers            | `OutboxEventPublisherTest`                                                                    | Unitário, com SNS e JPA mockados       |
-| Publishers            | `OutboxEventPublisherIT`                                                                      | Integração (SNS + SQS + PostgreSQL reais) |
-| Controllers           | `ServiceOrderExecutionControllerTest`                                                         | `@WebMvcTest` com `MockMvc` e casos de uso mockados |
-| Controllers           | `ServiceOrderExecutionControllerIT`                                                           | Integração com RestAssured (aplicação em porta aleatória + PostgreSQL real) |
-| Presenters            | `ServiceOrderExecutionPresenterTest`                                                          | Unitário                               |
-| Aplicação             | `MsOfisyExecutionApplicationTests`                                                            | Context load                           |
+| Camada       | Testes                                                                                                  | Tipo                                                                        |
+|--------------|---------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------|
+| Domínio      | `ServiceOrderExecutionTest`, `ServiceOrderExecutionStatusTest`, `ProcessedEventTest`, `OutboxEventTest` | Unitário                                                                    |
+| Casos de uso | Um `*ServiceTest` por caso de uso em `application/`                                                     | Unitário, com repositórios mockados                                         |
+| Gateways     | `*MapperTest`, `*RepositoryImplTest`                                                                    | Unitário                                                                    |
+| Listeners    | `ExecutionEventsListenerTest`, `QuoteApprovedHandlerTest`                                               | Unitário                                                                    |
+| Listeners    | `ExecutionEventsListenerIT`                                                                             | Integração (SQS + PostgreSQL reais)                                         |
+| Publishers   | `OutboxEventPublisherTest`                                                                              | Unitário, com SNS e JPA mockados                                            |
+| Publishers   | `OutboxEventPublisherIT`                                                                                | Integração (SNS + SQS + PostgreSQL reais)                                   |
+| Controllers  | `ServiceOrderExecutionControllerTest`                                                                   | `@WebMvcTest` com `MockMvc` e casos de uso mockados                         |
+| Controllers  | `ServiceOrderExecutionControllerIT`                                                                     | Integração com RestAssured (aplicação em porta aleatória + PostgreSQL real) |
+| Presenters   | `ServiceOrderExecutionPresenterTest`                                                                    | Unitário                                                                    |
+| Aplicação    | `MsOfisyExecutionApplicationTests`                                                                      | Context load                                                                |
 
 ### Testes de integração
 
@@ -48,7 +48,11 @@ O `ServiceOrderExecutionControllerIT` sobe a aplicação em porta aleatória e c
 
 - iniciar a primeira execução de uma OS grava um `ExecutionStarted` no outbox, e iniciar a segunda não grava outro;
 - iniciar uma execução já iniciada devolve `409`, sem novo evento;
-- iniciar uma execução inexistente devolve `404`.
+- iniciar uma execução inexistente devolve `404`;
+- concluir a primeira de duas execuções não grava evento, e concluir a segunda grava um `AllExecutionsCompleted`;
+- concluir uma execução quando as demais da OS estão canceladas grava um `AllExecutionsCompleted`;
+- concluir uma execução já concluída ou ainda `PENDING` devolve `409`, e uma inexistente devolve `404`;
+- concluir as duas últimas execuções da OS em paralelo grava um único `AllExecutionsCompleted`, exercitando o lock no PostgreSQL real.
 
 ---
 
