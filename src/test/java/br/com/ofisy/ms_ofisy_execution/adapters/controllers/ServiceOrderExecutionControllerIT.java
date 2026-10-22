@@ -8,11 +8,15 @@ import br.com.ofisy.ms_ofisy_execution.application.start.StartServiceOrderExecut
 import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecution;
 import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecutionRepository;
 import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecutionStatus;
+import br.com.ofisy.ms_ofisy_execution.shared.jwt.JwtTestTokens;
 import io.restassured.RestAssured;
+import io.restassured.specification.RequestSpecification;
 import io.restassured.response.ValidatableResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -32,7 +36,10 @@ import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 
 @Import(TestcontainersConfiguration.class)
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "jwt.secret=" + JwtTestTokens.SECRET
+)
 class ServiceOrderExecutionControllerIT {
 
     private static final String BASE_URL = "/api/v1/service_order_executions";
@@ -168,7 +175,7 @@ class ServiceOrderExecutionControllerIT {
 
         @Test
         void shouldReturnFirstPageWithDefaultSizeOf10() {
-            RestAssured.given()
+            authorized()
                     .when()
                     .get(BASE_URL)
                     .then()
@@ -178,7 +185,7 @@ class ServiceOrderExecutionControllerIT {
 
         @Test
         void shouldRespectRequestedPageSize() {
-            RestAssured.given()
+            authorized()
                     .queryParam("size", 2)
                     .when()
                     .get(BASE_URL)
@@ -193,7 +200,7 @@ class ServiceOrderExecutionControllerIT {
 
         @Test
         void shouldReturnExecution() {
-            RestAssured.given()
+            authorized()
                     .when()
                     .get(BASE_URL + "/{id}", firstExecutionId)
                     .then()
@@ -206,7 +213,7 @@ class ServiceOrderExecutionControllerIT {
 
         @Test
         void shouldReturn404WhenExecutionDoesNotExist() {
-            RestAssured.given()
+            authorized()
                     .when()
                     .get(BASE_URL + "/{id}", UUID.randomUUID())
                     .then()
@@ -216,7 +223,7 @@ class ServiceOrderExecutionControllerIT {
 
         @Test
         void shouldReturn400WhenIdIsNotUuid() {
-            RestAssured.given()
+            authorized()
                     .when()
                     .get(BASE_URL + "/{id}", "not-a-uuid")
                     .then()
@@ -229,7 +236,7 @@ class ServiceOrderExecutionControllerIT {
 
         @Test
         void shouldReturnOnlyExecutionsOfTheServiceOrder() {
-            RestAssured.given()
+            authorized()
                     .when()
                     .get(BASE_URL + "/service_order/{id}", serviceOrderId)
                     .then()
@@ -247,7 +254,7 @@ class ServiceOrderExecutionControllerIT {
         void shouldReturnOnlyExecutionsOfTheServiceCatalog() {
             UUID serviceCatalogId = executionRepository.findById(firstExecutionId).orElseThrow().getServiceCatalogId();
 
-            RestAssured.given()
+            authorized()
                     .queryParam("serviceCatalogId", serviceCatalogId)
                     .when()
                     .get(BASE_URL)
@@ -266,7 +273,7 @@ class ServiceOrderExecutionControllerIT {
         void shouldReturnOnlyExecutionsWithTheStatusIgnoringCase() {
             startDirectly(firstExecutionId);
 
-            RestAssured.given()
+            authorized()
                     .queryParam("status", "in_progress")
                     .queryParam("size", 100)
                     .when()
@@ -280,7 +287,7 @@ class ServiceOrderExecutionControllerIT {
 
         @Test
         void shouldReturn400WhenStatusIsInvalid() {
-            RestAssured.given()
+            authorized()
                     .queryParam("status", "invalid")
                     .when()
                     .get(BASE_URL)
@@ -302,7 +309,7 @@ class ServiceOrderExecutionControllerIT {
             saveFinished(serviceCatalogId, startedAt, startedAt.plusMinutes(45));
             executionRepository.save(ServiceOrderExecution.create(serviceCatalogId, UUID.randomUUID()));
 
-            RestAssured.given()
+            authorized()
                     .when()
                     .get(BASE_URL + "/execution_time_average/{serviceCatalogId}", serviceCatalogId)
                     .then()
@@ -312,7 +319,7 @@ class ServiceOrderExecutionControllerIT {
 
         @Test
         void shouldReturnZeroWhenServiceCatalogHasNoExecutions() {
-            RestAssured.given()
+            authorized()
                     .when()
                     .get(BASE_URL + "/execution_time_average/{serviceCatalogId}", UUID.randomUUID())
                     .then()
@@ -332,15 +339,101 @@ class ServiceOrderExecutionControllerIT {
         executionRepository.save(execution);
     }
 
-    private ValidatableResponse start(UUID executionId) {
+    @Nested
+    class Authorization {
+
+        @Test
+        void shouldReturn401WhenTokenIsMissing() {
+            RestAssured.given()
+                    .when()
+                    .get(BASE_URL)
+                    .then()
+                    .statusCode(401)
+                    .body("status", equalTo(401))
+                    .body("title", equalTo("Usuário não autorizado"));
+        }
+
+        @Test
+        void shouldReturn401WhenTokenIsSignedWithAnotherSecret() {
+            withToken(JwtTestTokens.withRole(JwtTestTokens.OTHER_SECRET, "MECHANIC")).statusCode(401);
+        }
+
+        @Test
+        void shouldReturn401WhenTokenIsExpired() {
+            withToken(JwtTestTokens.expired(JwtTestTokens.SECRET, "MECHANIC")).statusCode(401);
+        }
+
+        @Test
+        void shouldReturn401WhenTokenWasIssuedForACustomer() {
+            withToken(JwtTestTokens.withIssuer(JwtTestTokens.SECRET, JwtTestTokens.CUSTOMER_ISSUER, "MECHANIC"))
+                    .statusCode(401);
+        }
+
+        @Test
+        void shouldReturn403WhenRoleIsNotAllowed() {
+            withToken(JwtTestTokens.withRole(JwtTestTokens.SECRET, "STOCKMAN"))
+                    .statusCode(403)
+                    .body("status", equalTo(403))
+                    .body("title", equalTo("Usuário sem permissão"));
+        }
+
+        @Test
+        void shouldReturn403WhenTokenHasNoRole() {
+            withToken(JwtTestTokens.withoutRole(JwtTestTokens.SECRET)).statusCode(403);
+        }
+
+        @Test
+        void shouldReturn403OnPatchWhenRoleIsNotAllowed() {
+            RestAssured.given()
+                    .header("Authorization", "Bearer " + JwtTestTokens.withRole(JwtTestTokens.SECRET, "STOCKMAN"))
+                    .when()
+                    .patch(BASE_URL + "/{id}/start", firstExecutionId)
+                    .then()
+                    .statusCode(403);
+
+            assertThat(executionRepository.findById(firstExecutionId).orElseThrow().getStatus())
+                    .isEqualTo(ServiceOrderExecutionStatus.PENDING);
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"ADMIN", "ATTENDANT", "MECHANIC"})
+        void shouldReturn200ForAllowedRoles(String role) {
+            withToken(JwtTestTokens.withRole(JwtTestTokens.SECRET, role)).statusCode(200);
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"/actuator/health", "/v3/api-docs"})
+        void shouldAllowPublicPathsWithoutToken(String path) {
+            RestAssured.given()
+                    .when()
+                    .get(path)
+                    .then()
+                    .statusCode(200);
+        }
+
+        private ValidatableResponse withToken(String token) {
+            return RestAssured.given()
+                    .header("Authorization", "Bearer " + token)
+                    .when()
+                    .get(BASE_URL + "/{id}", firstExecutionId)
+                    .then();
+        }
+    }
+
+    private RequestSpecification authorized() {
         return RestAssured.given()
+                .header("Authorization", "Bearer " + JwtTestTokens.withRole(JwtTestTokens.SECRET, "MECHANIC"));
+    }
+
+    private ValidatableResponse start(UUID executionId) {
+        return authorized()
                 .when()
                 .patch("/api/v1/service_order_executions/{id}/start", executionId)
                 .then();
     }
 
     private ValidatableResponse complete(UUID executionId) {
-        return RestAssured.given()
+        return authorized()
                 .when()
                 .patch("/api/v1/service_order_executions/{id}/complete", executionId)
                 .then();

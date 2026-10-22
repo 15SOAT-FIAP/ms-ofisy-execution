@@ -10,12 +10,15 @@ import br.com.ofisy.ms_ofisy_execution.application.listbyserviceorderid.ListBySe
 import br.com.ofisy.ms_ofisy_execution.application.listbystatus.ListByStatusServiceOrderExecutionUseCase;
 import br.com.ofisy.ms_ofisy_execution.application.start.StartServiceOrderExecutionUseCase;
 import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecution;
+import br.com.ofisy.ms_ofisy_execution.shared.jwt.JwtService;
 import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecutionStatus;
 import br.com.ofisy.ms_ofisy_execution.domain.exception.InvalidServiceOrderExecutionTransitionException;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -28,6 +31,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(ServiceOrderExecutionController.class)
+@AutoConfigureMockMvc(addFilters = false)
+@WithMockUser(roles = "MECHANIC")
 class ServiceOrderExecutionControllerTest {
 
     private static final String BASE_URL = "/api/v1/service_order_executions";
@@ -37,6 +42,9 @@ class ServiceOrderExecutionControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @MockitoBean
+    private JwtService jwtService;
 
     @MockitoBean
     private StartServiceOrderExecutionUseCase startServiceOrderExecutionUseCase;
