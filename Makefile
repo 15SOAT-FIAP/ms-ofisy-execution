@@ -1,4 +1,4 @@
-.PHONY: help dev-up dev-down run test verify \
+.PHONY: help dev-up dev-down run test verify token \
 	event-quote-approved event-service-order-cancelled event-ignored event-invalid \
 	queue-status dlq-peek dlq-redrive dlq-purge events-peek \
 	db-executions db-processed-events db-outbox
@@ -34,6 +34,9 @@ test: ## Roda os testes unitários
 
 verify: ## Roda testes unitários, de integração e o gate de cobertura
 	@./mvnw verify
+
+token: ## Gera um JWT local no formato do core (ROLE obrigatório: ADMIN, ATTENDANT, MECHANIC ou STOCKMAN)
+	@ROLE=$(ROLE) EMAIL=$(EMAIL) scripts/generate-token.sh
 
 event-quote-approved: ## Publica um QuoteApproved no SNS (EVENT_ID, SERVICE_ORDER_ID, CATALOG_IDS opcionais)
 	@LOCALSTACK_CONTAINER=$(LOCALSTACK_CONTAINER) EVENT_ID=$(EVENT_ID) SERVICE_ORDER_ID=$(SERVICE_ORDER_ID) \
