@@ -30,7 +30,8 @@ br.com.ofisy.ms_ofisy_execution
 │   └── listeners/                    # Adaptadores de entrada: consumo da fila SQS
 │       ├── dto/                          # Envelope do evento e payloads
 │       └── handlers/                     # Um EventHandler por tipo de evento
-└── config/                       # Configurações do Spring e tratamento global de erros
+├── config/                       # Configurações do Spring, segurança, JWT, Swagger e tratamento global de erros
+└── shared/                       # Validação do JWT (JwtService) e filtro de autenticação (JwtAuthFilter)
 ```
 
 ---
@@ -56,6 +57,8 @@ br.com.ofisy.ms_ofisy_execution
 | Spring Cloud AWS SQS | Consumo das mensagens da fila via `@SqsListener`                         | `spring-cloud-aws-starter-sqs`                                                                                            |
 | Spring Web MVC       | Servidor web e API REST                                                  | `spring-boot-starter-webmvc`                                                                                              |
 | OpenAPI / Swagger    | Documentação da API e Swagger UI                                         | `springdoc-openapi-starter-webmvc-ui`                                                                                     |
+| Spring Security      | Autorização das rotas por role                                           | `spring-boot-starter-security`                                                                                            |
+| JJWT                 | Validação do JWT emitido pelo core                                       | `jjwt-api`, `jjwt-impl`, `jjwt-jackson`                                                                                   |
 | Spring Data JPA      | Persistência e mapeamento ORM                                            | `spring-boot-starter-data-jpa`                                                                                            |
 | Spring Validation    | Validação de DTOs e beans                                                | `spring-boot-starter-validation`                                                                                          |
 | Spring Actuator      | Endpoint de saúde (`/actuator/health`)                                   | `spring-boot-starter-actuator`                                                                                            |
@@ -67,6 +70,7 @@ br.com.ofisy.ms_ofisy_execution
 | Testcontainers       | PostgreSQL e LocalStack reais nos testes de integração                   | `spring-boot-testcontainers`, `testcontainers-postgresql`, `testcontainers-localstack`, `spring-cloud-aws-testcontainers` |
 | Awaitility           | Asserções sobre o processamento assíncrono da fila                       | `awaitility`                                                                                                              |
 | REST Assured         | Testes de integração da API contra a aplicação em porta aleatória        | `rest-assured`                                                                                                            |
+| Spring Security Test | Usuário simulado nos testes `@WebMvcTest`                                | `spring-security-test`                                                                                                    |
 | JaCoCo               | Relatório de cobertura e gate mínimo de 80%                              | `jacoco-maven-plugin`                                                                                                     |
 
 ---
@@ -91,6 +95,7 @@ br.com.ofisy.ms_ofisy_execution
 
 - `localstack/init/ready.d/01-messaging.sh`: cria tópico, fila, DLQ e assinatura no LocalStack. É o mesmo script usado nos testes de integração;
 - `scripts/publish-event.sh`: publica um evento no tópico, simulando o produtor real;
+- `scripts/generate-token.sh`: gera um JWT local no mesmo formato do core (`make token ROLE=...`), para testar a API sem subir o core;
 - `Makefile`: atalhos para subir o ambiente, publicar eventos, inspecionar a fila/DLQ e consultar o banco (`make help`).
 
 ### Git e Ambiente
@@ -149,20 +154,22 @@ A documentação interativa fica no Swagger UI, em `http://localhost:8080/swagge
 
 Base: `/api/v1/service_order_executions`
 
-| Método  | Rota                                         | Descrição                                                                                              |
-|---------|----------------------------------------------|--------------------------------------------------------------------------------------------------------|
-| `GET`   | `/`                                          | Lista as execuções, paginado (`page`, `size`, `sort`; 10 por página por padrão)                        |
-| `GET`   | `/{id}`                                      | Busca uma execução. Responde `404` se não existir                                                      |
-| `GET`   | `/?serviceCatalogId={id}`                    | Lista as execuções de um serviço do catálogo, paginado                                                 |
+| Método  | Rota                                         | Descrição                                                                                                       |
+|---------|----------------------------------------------|-----------------------------------------------------------------------------------------------------------------|
+| `GET`   | `/`                                          | Lista as execuções, paginado (`page`, `size`, `sort`; 10 por página por padrão)                                 |
+| `GET`   | `/{id}`                                      | Busca uma execução. Responde `404` se não existir                                                               |
+| `GET`   | `/?serviceCatalogId={id}`                    | Lista as execuções de um serviço do catálogo, paginado                                                          |
 | `GET`   | `/?status={status}`                          | Lista as execuções de um status, paginado e sem diferenciar maiúsculas. Responde `400` se o status for inválido |
-| `GET`   | `/service_order/{id}`                        | Lista as execuções de uma OS, paginado                                                                 |
-| `GET`   | `/execution_time_average/{serviceCatalogId}` | Tempo médio, em minutos, das execuções finalizadas de um serviço do catálogo (`0.0` se não houver)     |
-| `PATCH` | `/{id}/start`                                | Inicia uma execução `PENDING`. Responde `404` se não existir e `409` se não estiver `PENDING`          |
-| `PATCH` | `/{id}/complete`                             | Conclui uma execução `IN_PROGRESS`. Responde `404` se não existir e `409` se não estiver `IN_PROGRESS` |
+| `GET`   | `/service_order/{id}`                        | Lista as execuções de uma OS, paginado                                                                          |
+| `GET`   | `/execution_time_average/{serviceCatalogId}` | Tempo médio, em minutos, das execuções finalizadas de um serviço do catálogo (`0.0` se não houver)              |
+| `PATCH` | `/{id}/start`                                | Inicia uma execução `PENDING`. Responde `404` se não existir e `409` se não estiver `PENDING`                   |
+| `PATCH` | `/{id}/complete`                             | Conclui uma execução `IN_PROGRESS`. Responde `404` se não existir e `409` se não estiver `IN_PROGRESS`          |
 
 Não há rota de criação nem de cancelamento: as execuções são criadas pelo evento `QuoteApproved` e canceladas pelo evento `ServiceOrderCancelled` ([MESSAGING.md](docs/MESSAGING.md)).
 
-Erros seguem o formato `ProblemDetail` (RFC 9457), com `title` e `detail`. A autenticação JWT ainda não está aplicada às rotas.
+Todas as rotas exigem um JWT emitido pelo core com role `ADMIN`, `ATTENDANT` ou `MECHANIC`. Sem token válido a resposta é `401`, e com outra role é `403` ([SECURITY.md](docs/SECURITY.md)). Para testar localmente, gere um token com `make token ROLE=MECHANIC`.
+
+Erros seguem o formato `ProblemDetail` (RFC 9457), com `title` e `detail`.
 
 Para ver todos os comandos disponíveis, rode `make help`.
 
@@ -170,15 +177,19 @@ Para ver todos os comandos disponíveis, rode `make help`.
 
 ## Variáveis de ambiente
 
-| Variável            | Descrição              |
-|---------------------|------------------------|
-| `POSTGRES_DB`       | Nome do banco de dados |
-| `POSTGRES_USER`     | Usuário do banco       |
-| `POSTGRES_PASSWORD` | Senha do banco         |
+| Variável            | Descrição                                                   |
+|---------------------|-------------------------------------------------------------|
+| `POSTGRES_DB`       | Nome do banco de dados                                      |
+| `POSTGRES_USER`     | Usuário do banco                                            |
+| `POSTGRES_PASSWORD` | Senha do banco                                              |
+| `JWT_SECRET`        | Chave HS256 para validar o JWT. Precisa ser a mesma do core |
 
 ---
 
 ## Documentação Adicional
+
+### Segurança
+- **[Autenticação e autorização](docs/SECURITY.md)**: contrato do JWT emitido pelo core, roles por rota, respostas 401/403 e como gerar um token local
 
 ### Mensageria
 - **[Mensageria](docs/MESSAGING.md)**: topologia SNS/SQS, contrato dos eventos, idempotência, DLQ e como exercitar o fluxo localmente
