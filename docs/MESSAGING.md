@@ -1,6 +1,6 @@
 # Mensageria
 
-O ms-ofisy-execution se comunica com os demais microsserviços por eventos, usando **Amazon SNS + SQS** ([ADR-0011](https://github.com/15SOAT-FIAP/techchallenge-ofisy/blob/master/docs/adr/0011-utilizar-sns-e-sqs-como-mensageria.md)). Cada produtor publica no seu próprio tópico, e este ms recebe os eventos que lhe interessam por uma única fila FIFO.
+O ms-ofisy-execution se comunica com os demais microsserviços por eventos, usando **Amazon SNS + SQS** ([ADR-0011](https://github.com/15SOAT-FIAP/techchallenge-ofisy/blob/master/docs/adr/0011-utilizar-sns-e-sqs-como-mensageria.md)). Cada produtor publica no seu próprio tópico, e este ms recebe os eventos que lhe interessam por uma única fila FIFO. Os eventos que ele produz saem por um *transactional outbox* para o tópico `ofisy-execution-events.fifo`.
 
 ---
 
@@ -12,16 +12,22 @@ flowchart LR
     topic -->|assinatura<br/>filtro type = QuoteApproved<br/>raw delivery| queue[(SQS<br/>ofisy-execution.fifo)]
     queue -->|após 5 recebimentos| dlq[(SQS<br/>ofisy-execution-dlq.fifo)]
     queue --> app[ms-ofisy-execution]
+    app -->|outbox + publisher| execTopic[(SNS<br/>ofisy-execution-events.fifo)]
+    execTopic -.->|só local, raw delivery| inspect[(SQS<br/>ofisy-execution-events-inspect.fifo)]
 ```
 
-| Recurso    | Nome                        | Observação                                                                               |
-|------------|-----------------------------|------------------------------------------------------------------------------------------|
-| Tópico     | `ofisy-billing-events.fifo` | Pertence ao ms de billing na AWS. Localmente é criado só para exercitar o fluxo          |
-| Assinatura | tópico → fila               | `RawMessageDelivery=true` e `FilterPolicy` aplicada ao corpo da mensagem (`MessageBody`) |
-| Fila       | `ofisy-execution.fifo`      | Configurada em `ofisy.messaging.queues.execution` (`application.yaml`)                   |
-| DLQ        | `ofisy-execution-dlq.fifo`  | `RedrivePolicy` com `maxReceiveCount=5`                                                  |
+| Recurso          | Nome                                  | Observação                                                                               |
+|------------------|---------------------------------------|------------------------------------------------------------------------------------------|
+| Tópico           | `ofisy-billing-events.fifo`           | Pertence ao ms de billing na AWS. Localmente é criado só para exercitar o fluxo          |
+| Assinatura       | tópico → fila                         | `RawMessageDelivery=true` e `FilterPolicy` aplicada ao corpo da mensagem (`MessageBody`) |
+| Fila             | `ofisy-execution.fifo`                | Configurada em `ofisy.messaging.queues.execution` (`application.yaml`)                   |
+| DLQ              | `ofisy-execution-dlq.fifo`            | `RedrivePolicy` com `maxReceiveCount=5`                                                  |
+| Tópico           | `ofisy-execution-events.fifo`         | Tópico deste ms, configurado em `ofisy.messaging.topics.execution`                       |
+| Fila de inspeção | `ofisy-execution-events-inspect.fifo` | Só local. Assinada no tópico deste ms para ver o que foi publicado                       |
 
 Localmente, tudo é criado pelo `localstack/init/ready.d/01-messaging.sh`, que roda quando o LocalStack sobe. Com `queue-not-found-strategy: fail`, a aplicação não inicia se a fila não existir.
+
+Na AWS, os recursos vêm do repositório de infraestrutura. O tópico é configurado pelo **nome**: o `SnsConfig` registra um `TopicsListingTopicArnResolver`, que descobre o ARN listando os tópicos (`sns:ListTopics`) em vez de chamar `CreateTopic`, e guarda o resultado em cache. A aplicação precisa de `sns:ListTopics` e `sns:Publish`.
 
 ---
 
@@ -63,7 +69,7 @@ Todo evento segue o mesmo envelope (`adapters/listeners/dto/EventEnvelope.java`)
 
 ### Eventos publicados
 
-Nenhum por enquanto.
+Nenhum evento de negócio por enquanto. A estrutura de publicação está descrita em [Publicação de eventos](#publicação-de-eventos-outbox).
 
 ---
 
@@ -129,6 +135,60 @@ A entrega do SQS é *at-least-once*, então um mesmo evento pode chegar mais de 
 
 ---
 
+## Publicação de eventos (outbox)
+
+Nenhum caso de uso publica direto no SNS. Seguindo a [RFC-0008](https://github.com/15SOAT-FIAP/techchallenge-ofisy/blob/master/docs/rfc/0008-coordenar-a-saga-entre-os-microsservicos.md), o caso de uso grava o evento na tabela `outbox_events`, na mesma transação da mudança de estado, e um publicador agendado o envia ao tópico. Se a transação falhar, o evento não é gravado; se o SNS estiver fora, o evento espera no banco.
+
+```mermaid
+sequenceDiagram
+    participant UC as Caso de uso
+    participant DB as PostgreSQL
+    participant P as OutboxEventPublisher
+    participant SNS as SNS ofisy-execution-events.fifo
+
+    UC->>DB: muda o estado + insert outbox_events (mesma transação)
+    loop a cada publish-interval
+        P->>DB: select pendentes for update, em ordem de occurred_at
+        loop cada evento do lote
+            P->>SNS: envelope (groupId = serviceOrderId, deduplicationId = eventId)
+            P->>DB: published_at = now()
+        end
+    end
+```
+
+| Peça                                    | Papel                                                                     |
+|-----------------------------------------|---------------------------------------------------------------------------|
+| `domain/OutboxEvent`                    | O evento a publicar: tipo, OS e payload. Id e `occurredAt` são gerados    |
+| `domain/OutboxEventRepository`          | Porta usada pelos casos de uso. Só tem `save`                             |
+| `adapters/gateways/OutboxEventRepositoryImpl` | Serializa o payload para JSON e grava em `outbox_events`            |
+| `adapters/publishers/OutboxEventPublisher`    | Lê os pendentes, publica o envelope no SNS e marca `published_at`   |
+
+O envelope publicado é o mesmo `EventEnvelope` que este ms consome, então quem assina o tópico recebe o mesmo contrato descrito em [Contrato dos eventos](#contrato-dos-eventos).
+
+### Garantias
+
+- **Ordem**: os pendentes são publicados em ordem de `occurred_at`, com `message-group-id = serviceOrderId`. Quando um evento falha, o publicador loga e **pula os eventos seguintes da mesma OS** naquele lote, para não publicá-los fora de ordem. Os eventos das outras OSs continuam sendo publicados normalmente. O evento que falhou é tentado de novo no próximo ciclo.
+- **Evento que sempre falha**: um evento com falha permanente (por exemplo, payload inválido) é tentado a cada ciclo e segura os eventos seguintes da sua OS, mas não bloqueia as outras OSs. Ainda não há limite de tentativas nem status de erro.
+- **Mais de uma réplica**: a busca dos pendentes usa `SELECT ... FOR UPDATE`. Uma segunda réplica espera o lote da primeira terminar e já encontra os eventos marcados, sem publicar fora de ordem.
+- **Duplicidade**: se a aplicação cair entre publicar e gravar `published_at`, o evento é publicado de novo. Dentro da janela de 5 minutos, a deduplicação FIFO (`deduplicationId = eventId`) descarta a cópia; depois disso, os consumidores precisam ser idempotentes pelo `eventId`.
+- **Retenção**: os eventos publicados continuam na tabela, com `published_at` preenchido. Ainda não há limpeza automática.
+
+### Configuração
+
+| Propriedade                               | Padrão                        | Descrição                              |
+|-------------------------------------------|-------------------------------|----------------------------------------|
+| `ofisy.messaging.topics.execution`        | `ofisy-execution-events.fifo` | Nome do tópico onde os eventos saem    |
+| `ofisy.messaging.outbox.publish-interval` | `1s`                          | Intervalo entre o fim de um ciclo e o início do próximo |
+| `ofisy.messaging.outbox.batch-size`       | `100`                         | Máximo de eventos publicados por ciclo |
+
+### Como publicar um novo evento
+
+1. Criar um `record` com o payload do evento.
+2. No caso de uso, dentro da transação que muda o estado, chamar `outboxEventRepository.save(OutboxEvent.create("NomeDoEvento", serviceOrderId, payload))`.
+3. Cobrir no teste do caso de uso que o evento é gravado e adicionar a linha na tabela de [eventos publicados](#eventos-publicados) deste documento.
+
+---
+
 ## Exercitando o fluxo localmente
 
 Com o ambiente de desenvolvimento no ar (`make dev-up` + `make run`):
@@ -144,6 +204,8 @@ Com o ambiente de desenvolvimento no ar (`make dev-up` + `make run`):
 | `make dlq-purge`            | Apaga todas as mensagens da DLQ                                                                                    |
 | `make db-executions`        | Lista as execuções de uma OS (`SERVICE_ORDER_ID` obrigatório)                                                      |
 | `make db-processed-events`  | Lista os últimos eventos processados                                                                               |
+| `make db-outbox`            | Lista os últimos eventos do outbox e se já foram publicados                                                        |
+| `make events-peek`          | Lista os eventos publicados no tópico deste ms, pela fila de inspeção                                              |
 
 ### Exemplo: verificando a idempotência
 

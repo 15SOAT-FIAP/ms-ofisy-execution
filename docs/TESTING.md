@@ -23,12 +23,14 @@ A separação é feita pelo nome: classes terminadas em `IT` são excluídas do 
 
 | Camada                | Testes                                                                                        | Tipo                                   |
 |-----------------------|-----------------------------------------------------------------------------------------------|----------------------------------------|
-| Domínio               | `ServiceOrderExecutionTest`, `ServiceOrderExecutionStatusTest`, `ProcessedEventTest`          | Unitário                               |
+| Domínio               | `ServiceOrderExecutionTest`, `ServiceOrderExecutionStatusTest`, `ProcessedEventTest`, `OutboxEventTest` | Unitário                     |
 | Casos de uso          | Um `*ServiceTest` por caso de uso em `application/`                                           | Unitário, com repositórios mockados    |
 | Gateways              | `*MapperTest`, `*RepositoryImplTest`                                                          | Unitário                               |
 | Gateways              | `JpaServiceOrderExecutionRepositoryIT`                                                        | Integração (PostgreSQL real)           |
 | Listeners             | `ExecutionEventsListenerTest`, `QuoteApprovedHandlerTest`                                     | Unitário                               |
 | Listeners             | `ExecutionEventsListenerIT`                                                                   | Integração (SQS + PostgreSQL reais)    |
+| Publishers            | `OutboxEventPublisherTest`                                                                    | Unitário, com SNS e JPA mockados       |
+| Publishers            | `OutboxEventPublisherIT`                                                                      | Integração (SNS + SQS + PostgreSQL reais) |
 | Aplicação             | `MsOfisyExecutionApplicationTests`                                                            | Context load                           |
 
 ### Testes de integração
@@ -46,6 +48,8 @@ O `JpaServiceOrderExecutionRepositoryIT` usa `@DataJpaTest` contra o PostgreSQL 
 - ignora execuções sem `started_at` ou `finished_at`;
 - trata durações negativas como zero;
 - ignora execuções de outros serviços do catálogo.
+
+O `OutboxEventPublisherIT` grava um evento pelo `OutboxEventRepository` e espera recebê-lo na fila de inspeção `ofisy-execution-events-inspect.fifo`, assinada no tópico do ms. Ele confere o envelope recebido e que o registro foi marcado como publicado.
 
 ---
 
