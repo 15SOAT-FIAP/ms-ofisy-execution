@@ -26,6 +26,7 @@ A separação é feita pelo nome: classes terminadas em `IT` são excluídas do 
 | Domínio               | `ServiceOrderExecutionTest`, `ServiceOrderExecutionStatusTest`, `ProcessedEventTest`          | Unitário                               |
 | Casos de uso          | Um `*ServiceTest` por caso de uso em `application/`                                           | Unitário, com repositórios mockados    |
 | Gateways              | `*MapperTest`, `*RepositoryImplTest`                                                          | Unitário                               |
+| Gateways              | `JpaServiceOrderExecutionRepositoryIT`                                                        | Integração (PostgreSQL real)           |
 | Listeners             | `ExecutionEventsListenerTest`, `QuoteApprovedHandlerTest`                                     | Unitário                               |
 | Listeners             | `ExecutionEventsListenerIT`                                                                   | Integração (SQS + PostgreSQL reais)    |
 | Aplicação             | `MsOfisyExecutionApplicationTests`                                                            | Context load                           |
@@ -36,6 +37,15 @@ O `ExecutionEventsListenerIT` publica mensagens direto na fila do LocalStack e u
 
 - o mesmo `QuoteApproved` entregue duas vezes cria as execuções só uma vez;
 - um evento sem handler é confirmado e não altera o banco.
+
+O `JpaServiceOrderExecutionRepositoryIT` usa `@DataJpaTest` contra o PostgreSQL do Testcontainers para validar a query nativa do tempo médio de execução. Cenários cobertos:
+
+- retorna zero quando não há execuções;
+- calcula a média em minutos considerando só execuções concluídas, ignorando as canceladas;
+- trunca os minutos de cada execução antes de calcular a média;
+- ignora execuções sem `started_at` ou `finished_at`;
+- trata durações negativas como zero;
+- ignora execuções de outros serviços do catálogo.
 
 ---
 
