@@ -14,7 +14,10 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
 @Slf4j
 @Component
@@ -42,15 +45,20 @@ public class OutboxEventPublisher {
     @Transactional
     public void publishPending() {
         List<OutboxEventEntity> pending = jpa.findByPublishedAtIsNullOrderByOccurredAtAsc(Limit.of(batchSize));
+        Set<UUID> failedServiceOrders = new HashSet<>();
 
         for (OutboxEventEntity event : pending) {
+            if (failedServiceOrders.contains(event.getServiceOrderId())) {
+                continue;
+            }
+
             try {
                 snsOperations.sendNotification(topicName, notification(event));
                 event.markPublished(Instant.now());
             } catch (Exception e) {
                 log.error("OutboxEventPublisher.publishPending >> failed to publish event {} of type {} for service order {}",
                         event.getEventId(), event.getEventType(), event.getServiceOrderId(), e);
-                break;
+                failedServiceOrders.add(event.getServiceOrderId());
             }
         }
     }

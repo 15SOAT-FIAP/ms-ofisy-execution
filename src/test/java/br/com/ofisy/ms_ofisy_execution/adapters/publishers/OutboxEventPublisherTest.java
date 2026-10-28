@@ -53,10 +53,14 @@ class OutboxEventPublisherTest {
     }
 
     private OutboxEventEntity pendingEvent(Instant occurredAt) {
+        return pendingEvent(UUID.randomUUID(), occurredAt);
+    }
+
+    private OutboxEventEntity pendingEvent(UUID serviceOrderId, Instant occurredAt) {
         return OutboxEventEntity.builder()
                 .eventId(UUID.randomUUID())
                 .eventType("ExecutionStarted")
-                .serviceOrderId(UUID.randomUUID())
+                .serviceOrderId(serviceOrderId)
                 .payload("{\"executionId\":\"%s\"}".formatted(UUID.randomUUID()))
                 .occurredAt(occurredAt)
                 .build();
@@ -87,21 +91,30 @@ class OutboxEventPublisherTest {
     }
 
     @Test
-    void shouldStopBatchOnFirstFailure() {
+    void shouldSkipOnlyEventsOfServiceOrderThatFailed() {
+        UUID failingServiceOrder = UUID.randomUUID();
         OutboxEventEntity first = pendingEvent(Instant.parse("2026-10-16T10:00:00Z"));
-        OutboxEventEntity second = pendingEvent(Instant.parse("2026-10-16T10:00:01Z"));
-        OutboxEventEntity third = pendingEvent(Instant.parse("2026-10-16T10:00:02Z"));
-        when(jpa.findByPublishedAtIsNullOrderByOccurredAtAsc(Limit.of(BATCH_SIZE))).thenReturn(List.of(first, second, third));
+        OutboxEventEntity failing = pendingEvent(failingServiceOrder, Instant.parse("2026-10-16T10:00:01Z"));
+        OutboxEventEntity sameOrderAsFailing = pendingEvent(failingServiceOrder, Instant.parse("2026-10-16T10:00:02Z"));
+        OutboxEventEntity otherOrder = pendingEvent(Instant.parse("2026-10-16T10:00:03Z"));
+        when(jpa.findByPublishedAtIsNullOrderByOccurredAtAsc(Limit.of(BATCH_SIZE)))
+                .thenReturn(List.of(first, failing, sameOrderAsFailing, otherOrder));
         doNothing()
                 .doThrow(new RuntimeException("SNS unavailable"))
+                .doNothing()
                 .when(snsOperations).sendNotification(eq(TOPIC_NAME), any());
 
         publisher.publishPending();
 
-        verify(snsOperations, times(2)).sendNotification(eq(TOPIC_NAME), any());
+        verify(snsOperations, times(3)).sendNotification(eq(TOPIC_NAME), notificationCaptor.capture());
+        assertThat(notificationCaptor.getAllValues())
+                .extracting(SnsNotification::getGroupId)
+                .doesNotHaveDuplicates()
+                .contains(otherOrder.getServiceOrderId().toString());
         assertThat(first.getPublishedAt()).isNotNull();
-        assertThat(second.getPublishedAt()).isNull();
-        assertThat(third.getPublishedAt()).isNull();
+        assertThat(failing.getPublishedAt()).isNull();
+        assertThat(sameOrderAsFailing.getPublishedAt()).isNull();
+        assertThat(otherOrder.getPublishedAt()).isNotNull();
     }
 
     @Test
