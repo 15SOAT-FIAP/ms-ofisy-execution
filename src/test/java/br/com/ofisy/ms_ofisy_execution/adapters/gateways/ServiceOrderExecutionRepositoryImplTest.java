@@ -293,4 +293,22 @@ class ServiceOrderExecutionRepositoryImplTest {
         verify(jpa)
                 .existsByServiceOrderIdAndStartedAtIsNotNull(serviceOrderId);
     }
+
+    @Test
+    void shouldLockAllExecutionsFromSameServiceOrder() {
+        UUID executionId = UUID.randomUUID();
+        ServiceOrderExecutionEntity entity = ServiceOrderExecutionMapper.toEntity(
+                ServiceOrderExecution.create(UUID.randomUUID(), UUID.randomUUID()));
+
+        when(jpa.lockAllFromSameServiceOrder(executionId))
+                .thenReturn(List.of(entity));
+
+        List<ServiceOrderExecution> result = repository.lockAllFromSameServiceOrder(executionId);
+
+        assertEquals(1, result.size());
+        assertEquals(entity.getServiceOrderId(), result.getFirst().getServiceOrderId());
+
+        verify(jpa)
+                .lockAllFromSameServiceOrder(executionId);
+    }
 }
