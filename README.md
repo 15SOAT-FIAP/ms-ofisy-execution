@@ -2,7 +2,7 @@
 
 FIAP 15SOAT - Tech Challenge - Grupo 81
 
-Microsserviço responsável pela **execução dos serviços de uma ordem de serviço** da Ofisy. Ele consome o evento `QuoteApproved`, publicado pelo ms de billing quando um orçamento é aprovado, e cria uma execução `PENDING` para cada serviço do catálogo que foi aprovado.
+Microsserviço responsável pela **execução dos serviços de uma ordem de serviço** da Ofisy. Ele consome o evento `QuoteApproved`, publicado pelo ms de billing quando um orçamento é aprovado, e cria uma execução `PENDING` para cada serviço do catálogo que foi aprovado. Também consome o `ServiceOrderCancelled`, publicado pelo core quando a OS é cancelada, e cancela as execuções ainda ativas da OS.
 
 O contexto de execução foi extraído do core da Ofisy ([techchallenge-ofisy](https://github.com/15SOAT-FIAP/techchallenge-ofisy)), que continua existindo enquanto alguns contextos são estrangulados para microsserviços. Este ms participa da saga coordenada por coreografia, e as decisões por trás dessa arquitetura estão registradas nos ADRs do core:
 
@@ -160,7 +160,7 @@ Base: `/api/v1/service_order_executions`
 | `PATCH` | `/{id}/start`                                | Inicia uma execução `PENDING`. Responde `404` se não existir e `409` se não estiver `PENDING`          |
 | `PATCH` | `/{id}/complete`                             | Conclui uma execução `IN_PROGRESS`. Responde `404` se não existir e `409` se não estiver `IN_PROGRESS` |
 
-Não há rota de criação nem de cancelamento: as execuções são criadas pelo evento `QuoteApproved` e o cancelamento virá do evento de OS cancelada ([MESSAGING.md](docs/MESSAGING.md)).
+Não há rota de criação nem de cancelamento: as execuções são criadas pelo evento `QuoteApproved` e canceladas pelo evento `ServiceOrderCancelled` ([MESSAGING.md](docs/MESSAGING.md)).
 
 Erros seguem o formato `ProblemDetail` (RFC 9457), com `title` e `detail`. A autenticação JWT ainda não está aplicada às rotas.
 
