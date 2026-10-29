@@ -35,4 +35,6 @@ public interface JpaServiceOrderExecutionRepository extends JpaRepository<Servic
     double averageExecutionMinutesByServiceCatalogIdAndStatus(UUID serviceCatalogId, String status);
 
     boolean existsByServiceOrderIdAndServiceCatalogId(UUID serviceOrderId, UUID serviceCatalogId);
+
+    boolean existsByServiceOrderIdAndStartedAtIsNotNull(UUID serviceOrderId);
 }
