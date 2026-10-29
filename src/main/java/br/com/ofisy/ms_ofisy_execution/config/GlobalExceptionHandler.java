@@ -1,6 +1,7 @@
 package br.com.ofisy.ms_ofisy_execution.config;
 
 import br.com.ofisy.ms_ofisy_execution.application.exception.ServiceOrderExecutionNotFoundException;
+import br.com.ofisy.ms_ofisy_execution.domain.exception.InvalidServiceOrderExecutionStatusException;
 import br.com.ofisy.ms_ofisy_execution.domain.exception.InvalidServiceOrderExecutionTransitionException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -14,6 +15,13 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleServiceOrderExecutionNotFound(ServiceOrderExecutionNotFoundException ex) {
         var problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
         problem.setTitle("Execução não encontrada");
+        return problem;
+    }
+
+    @ExceptionHandler(InvalidServiceOrderExecutionStatusException.class)
+    public ProblemDetail handleInvalidServiceOrderExecutionStatus(InvalidServiceOrderExecutionStatusException ex) {
+        var problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        problem.setTitle("Status inválido");
         return problem;
     }
 
