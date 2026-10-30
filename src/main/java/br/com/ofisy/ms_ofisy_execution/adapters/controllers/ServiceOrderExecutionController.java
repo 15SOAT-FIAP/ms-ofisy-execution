@@ -16,6 +16,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -40,6 +41,7 @@ public class ServiceOrderExecutionController implements ServiceOrderExecutionApi
     private final CompleteServiceOrderExecutionUseCase completeServiceOrderExecutionUseCase;
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'ATTENDANT', 'MECHANIC')")
     public ResponseEntity<Page<ServiceOrderExecutionResponseDTO>> getAll(
             @ParameterObject @PageableDefault(size = 10) Pageable pageable) {
 
@@ -47,12 +49,14 @@ public class ServiceOrderExecutionController implements ServiceOrderExecutionApi
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ATTENDANT', 'MECHANIC')")
     public ResponseEntity<ServiceOrderExecutionResponseDTO> getById(@PathVariable UUID id) {
 
         return ResponseEntity.ok(ServiceOrderExecutionPresenter.present(identifyByIdServiceOrderExecutionUseCase.execute(id)));
     }
 
     @GetMapping(params = "serviceCatalogId")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ATTENDANT', 'MECHANIC')")
     public ResponseEntity<Page<ServiceOrderExecutionResponseDTO>> getByServiceCatalogId(
             @RequestParam UUID serviceCatalogId,
             @ParameterObject @PageableDefault(size = 10) Pageable pageable) {
@@ -61,6 +65,7 @@ public class ServiceOrderExecutionController implements ServiceOrderExecutionApi
     }
 
     @GetMapping(params = "status")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ATTENDANT', 'MECHANIC')")
     public ResponseEntity<Page<ServiceOrderExecutionResponseDTO>> getByStatus(
             @RequestParam String status,
             @ParameterObject @PageableDefault(size = 10) Pageable pageable) {
@@ -69,6 +74,7 @@ public class ServiceOrderExecutionController implements ServiceOrderExecutionApi
     }
 
     @GetMapping("/service_order/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ATTENDANT', 'MECHANIC')")
     public ResponseEntity<Page<ServiceOrderExecutionResponseDTO>> getByServiceOrderId(
             @PathVariable UUID id,
             @ParameterObject @PageableDefault(size = 10) Pageable pageable) {
@@ -77,17 +83,20 @@ public class ServiceOrderExecutionController implements ServiceOrderExecutionApi
     }
 
     @GetMapping("/execution_time_average/{serviceCatalogId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ATTENDANT', 'MECHANIC')")
     public ResponseEntity<Double> getExecutionTimeAverage(@PathVariable UUID serviceCatalogId) {
 
         return ResponseEntity.ok(getAverageExecutionTimeUseCase.execute(serviceCatalogId));
     }
 
     @PatchMapping("/{id}/complete")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ATTENDANT', 'MECHANIC')")
     public ResponseEntity<ServiceOrderExecutionResponseDTO> complete(@PathVariable UUID id) {
         return ResponseEntity.ok(ServiceOrderExecutionPresenter.present(completeServiceOrderExecutionUseCase.execute(id)));
     }
 
     @PatchMapping("/{id}/start")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ATTENDANT', 'MECHANIC')")
     public ResponseEntity<ServiceOrderExecutionResponseDTO> start(@PathVariable UUID id) {
         return ResponseEntity.ok(ServiceOrderExecutionPresenter.present(startServiceOrderExecutionUseCase.execute(id)));
     }

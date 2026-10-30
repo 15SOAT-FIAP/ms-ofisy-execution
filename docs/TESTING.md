@@ -34,6 +34,7 @@ A separação é feita pelo nome: classes terminadas em `IT` são excluídas do 
 | Controllers  | `ServiceOrderExecutionControllerTest`                                                                   | `@WebMvcTest` com `MockMvc` e casos de uso mockados                         |
 | Controllers  | `ServiceOrderExecutionControllerIT`                                                                     | Integração com RestAssured (aplicação em porta aleatória + PostgreSQL real) |
 | Presenters   | `ServiceOrderExecutionPresenterTest`                                                                    | Unitário                                                                    |
+| Segurança    | `JwtServiceTest`                                                                                        | Unitário                                                                    |
 | Aplicação    | `MsOfisyExecutionApplicationTests`                                                                      | Context load                                                                |
 
 ### Testes de integração
@@ -68,7 +69,10 @@ O `ServiceOrderExecutionControllerIT` sobe a aplicação em porta aleatória e c
 - buscar por id devolve a execução, `404` se não existir e `400` se o id não for UUID;
 - listar por OS e por serviço do catálogo devolve só as execuções daquela OS ou serviço;
 - listar por status filtra sem diferenciar maiúsculas, e um status inválido devolve `400`;
-- o tempo médio considera só as execuções finalizadas (60 e 45 min dão `52.5`) e devolve `0.0` quando o serviço não tem execuções.
+- o tempo médio considera só as execuções finalizadas (60 e 45 min dão `52.5`) e devolve `0.0` quando o serviço não tem execuções;
+- autorização: sem token, com token assinado por outra chave, expirado ou emitido para cliente (`techchallenge-ofisy-auth`) devolve `401`; role `STOCKMAN` ou token sem role devolve `403` (inclusive no `PATCH`, sem alterar a execução); `ADMIN`, `ATTENDANT` e `MECHANIC` recebem `200`; `/actuator/health` e `/v3/api-docs` respondem sem token.
+
+Todas as chamadas autenticadas enviam um token `MECHANIC` gerado pelo `JwtTestTokens`, assinado com o `jwt.secret` passado no `@SpringBootTest(properties = ...)`, como no `IntegrationTestBase` do core. O `ServiceOrderExecutionControllerTest` (`@WebMvcTest`) segue o core: roda com `addFilters = false` e `@WithMockUser`, então as regras de role são verificadas só no IT.
 
 Como o banco é compartilhado entre os testes e tem a massa do V2, cada cenário cria as próprias execuções com IDs aleatórios e só faz asserções sobre elas.
 
