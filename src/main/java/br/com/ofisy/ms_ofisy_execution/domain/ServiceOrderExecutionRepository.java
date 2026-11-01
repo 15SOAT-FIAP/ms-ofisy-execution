@@ -26,7 +26,7 @@ public interface ServiceOrderExecutionRepository {
 
     long countByServiceOrderIdAndStatus(UUID serviceOrderId, ServiceOrderExecutionStatus serviceOrderExecutionStatus);
 
-    List<ServiceOrderExecution> findByServiceOrderIdAndStatusIn(UUID serviceOrderId, Collection<ServiceOrderExecutionStatus> statuses);
+    List<ServiceOrderExecution> lockByServiceOrderIdAndStatusIn(UUID serviceOrderId, Collection<ServiceOrderExecutionStatus> statuses);
 
     double averageExecutionMinutesByServiceCatalogIdAndStatus(UUID serviceCatalogId, ServiceOrderExecutionStatus status);
 

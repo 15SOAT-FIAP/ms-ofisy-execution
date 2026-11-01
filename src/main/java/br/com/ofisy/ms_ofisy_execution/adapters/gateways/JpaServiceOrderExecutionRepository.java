@@ -24,7 +24,8 @@ public interface JpaServiceOrderExecutionRepository extends JpaRepository<Servic
 
     long countByServiceOrderIdAndStatus(UUID serviceOrderId, ServiceOrderExecutionStatus serviceOrderExecutionStatus);
 
-    List<ServiceOrderExecutionEntity> findByServiceOrderIdAndStatusIn(UUID serviceOrderId, Collection<ServiceOrderExecutionStatus> statuses);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    List<ServiceOrderExecutionEntity> findByServiceOrderIdAndStatusInOrderById(UUID serviceOrderId, Collection<ServiceOrderExecutionStatus> statuses);
 
     @Query(value = """
             SELECT COALESCE(AVG(GREATEST(FLOOR(EXTRACT(EPOCH FROM finished_at - started_at) / 60), 0)), 0)
