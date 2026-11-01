@@ -1,8 +1,11 @@
 package br.com.ofisy.ms_ofisy_execution.adapters.listeners;
 
 import br.com.ofisy.ms_ofisy_execution.TestcontainersConfiguration;
+import br.com.ofisy.ms_ofisy_execution.adapters.gateways.JpaOutboxEventRepository;
 import br.com.ofisy.ms_ofisy_execution.adapters.gateways.JpaProcessedEventRepository;
 import br.com.ofisy.ms_ofisy_execution.adapters.gateways.JpaServiceOrderExecutionRepository;
+import br.com.ofisy.ms_ofisy_execution.adapters.gateways.OutboxEventEntity;
+import br.com.ofisy.ms_ofisy_execution.application.cancelpending.CancelPendingExecutionsService;
 import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecution;
 import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecutionRepository;
 import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecutionStatus;
@@ -15,6 +18,7 @@ import software.amazon.awssdk.services.sqs.SqsAsyncClient;
 import software.amazon.awssdk.services.sqs.model.QueueAttributeName;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -33,6 +37,9 @@ class ExecutionEventsListenerIT {
 
     @Autowired
     private JpaProcessedEventRepository processedEventRepository;
+
+    @Autowired
+    private JpaOutboxEventRepository outboxEventRepository;
 
     @Autowired
     private ServiceOrderExecutionRepository serviceOrderExecutionRepository;
@@ -110,6 +117,7 @@ class ExecutionEventsListenerIT {
         assertThat(statusOf(pendingId)).isEqualTo(ServiceOrderExecutionStatus.CANCELLED);
         assertThat(statusOf(inProgressId)).isEqualTo(ServiceOrderExecutionStatus.CANCELLED);
         assertThat(statusOf(completedId)).isEqualTo(ServiceOrderExecutionStatus.COMPLETED);
+        assertThat(allExecutionsCancelledEventsOf(serviceOrderId)).hasSize(1);
     }
 
     private UUID saveExecution(UUID serviceOrderId, ServiceOrderExecutionStatus status) {
@@ -121,6 +129,13 @@ class ExecutionEventsListenerIT {
             execution.complete();
         }
         return serviceOrderExecutionRepository.save(execution).getId();
+    }
+
+    private List<OutboxEventEntity> allExecutionsCancelledEventsOf(UUID serviceOrderId) {
+        return outboxEventRepository.findAll().stream()
+                .filter(event -> event.getServiceOrderId().equals(serviceOrderId))
+                .filter(event -> event.getEventType().equals(CancelPendingExecutionsService.ALL_EXECUTIONS_CANCELLED))
+                .toList();
     }
 
     private ServiceOrderExecutionStatus statusOf(UUID executionId) {

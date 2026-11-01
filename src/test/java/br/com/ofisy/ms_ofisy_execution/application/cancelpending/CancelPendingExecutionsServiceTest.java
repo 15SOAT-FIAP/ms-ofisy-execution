@@ -1,6 +1,8 @@
 package br.com.ofisy.ms_ofisy_execution.application.cancelpending;
 
 import br.com.ofisy.ms_ofisy_execution.application.cancelpending.CancelPendingExecutionsUseCase.CancelPendingExecutionsCommand;
+import br.com.ofisy.ms_ofisy_execution.domain.OutboxEvent;
+import br.com.ofisy.ms_ofisy_execution.domain.OutboxEventRepository;
 import br.com.ofisy.ms_ofisy_execution.domain.ProcessedEvent;
 import br.com.ofisy.ms_ofisy_execution.domain.ProcessedEventRepository;
 import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecution;
@@ -19,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,6 +48,9 @@ class CancelPendingExecutionsServiceTest {
     @Mock
     private ProcessedEventRepository processedEventRepository;
 
+    @Mock
+    private OutboxEventRepository outboxEventRepository;
+
     @InjectMocks
     private CancelPendingExecutionsService cancelPendingService;
 
@@ -54,17 +60,20 @@ class CancelPendingExecutionsServiceTest {
     @Captor
     private ArgumentCaptor<ProcessedEvent> processedEventCaptor;
 
+    @Captor
+    private ArgumentCaptor<OutboxEvent> outboxEventCaptor;
+
     @Nested
     class Execute {
 
         @Test
-        void shouldQueryOnlyPendingAndInProgressStatuses() {
-            when(repository.findByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
+        void shouldLockOnlyPendingAndInProgressStatuses() {
+            when(repository.lockByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
                     .thenReturn(List.of());
 
             cancelPendingService.execute(COMMAND);
 
-            verify(repository).findByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), statusesCaptor.capture());
+            verify(repository).lockByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), statusesCaptor.capture());
             assertThat(statusesCaptor.getValue())
                     .containsExactlyInAnyOrder(ServiceOrderExecutionStatus.PENDING, ServiceOrderExecutionStatus.IN_PROGRESS);
         }
@@ -73,7 +82,7 @@ class CancelPendingExecutionsServiceTest {
         void shouldCancelAndSaveEveryActiveExecution() {
             var pending = createServiceOrderExecution(ServiceOrderExecutionStatus.PENDING, null);
             var inProgress = createServiceOrderExecution(ServiceOrderExecutionStatus.IN_PROGRESS, LocalDateTime.now());
-            when(repository.findByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
+            when(repository.lockByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
                     .thenReturn(List.of(pending, inProgress));
 
             cancelPendingService.execute(COMMAND);
@@ -90,7 +99,7 @@ class CancelPendingExecutionsServiceTest {
         void shouldPreserveStartedAtWhenCancellingInProgressExecution() {
             var startedAt = LocalDateTime.of(2026, 1, 1, 9, 0);
             var inProgress = createServiceOrderExecution(ServiceOrderExecutionStatus.IN_PROGRESS, startedAt);
-            when(repository.findByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
+            when(repository.lockByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
                     .thenReturn(List.of(inProgress));
 
             cancelPendingService.execute(COMMAND);
@@ -101,7 +110,7 @@ class CancelPendingExecutionsServiceTest {
 
         @Test
         void shouldNotSaveWhenNoActiveExecutionsFound() {
-            when(repository.findByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
+            when(repository.lockByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
                     .thenReturn(List.of());
 
             cancelPendingService.execute(COMMAND);
@@ -112,7 +121,7 @@ class CancelPendingExecutionsServiceTest {
         @Test
         void shouldPropagateTransitionExceptionAndNotSaveWhenExecutionCannotBeCancelled() {
             var completed = createServiceOrderExecution(ServiceOrderExecutionStatus.COMPLETED, LocalDateTime.now());
-            when(repository.findByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
+            when(repository.lockByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
                     .thenReturn(List.of(completed));
 
             assertThatThrownBy(() -> cancelPendingService.execute(COMMAND))
@@ -121,11 +130,36 @@ class CancelPendingExecutionsServiceTest {
             assertThat(completed.getStatus()).isEqualTo(ServiceOrderExecutionStatus.COMPLETED);
             verify(repository, never()).save(any());
             verify(processedEventRepository, never()).save(any());
+            verify(outboxEventRepository, never()).save(any());
+        }
+
+        @Test
+        void shouldRecordAllExecutionsCancelledAfterCancelling() {
+            when(repository.lockByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
+                    .thenReturn(List.of(createServiceOrderExecution(ServiceOrderExecutionStatus.PENDING, null)));
+
+            cancelPendingService.execute(COMMAND);
+
+            verify(outboxEventRepository).save(outboxEventCaptor.capture());
+            OutboxEvent event = outboxEventCaptor.getValue();
+            assertThat(event.getEventType()).isEqualTo(CancelPendingExecutionsService.ALL_EXECUTIONS_CANCELLED);
+            assertThat(event.getServiceOrderId()).isEqualTo(SERVICE_ORDER_ID);
+            assertThat(event.getPayload()).isEqualTo(Map.of());
+        }
+
+        @Test
+        void shouldRecordAllExecutionsCancelledEvenWhenNoActiveExecutionsFound() {
+            when(repository.lockByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
+                    .thenReturn(List.of());
+
+            cancelPendingService.execute(COMMAND);
+
+            verify(outboxEventRepository).save(any());
         }
 
         @Test
         void shouldRecordProcessedEventAfterCancelling() {
-            when(repository.findByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
+            when(repository.lockByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
                     .thenReturn(List.of(createServiceOrderExecution(ServiceOrderExecutionStatus.PENDING, null)));
 
             cancelPendingService.execute(COMMAND);
@@ -137,7 +171,7 @@ class CancelPendingExecutionsServiceTest {
 
         @Test
         void shouldRecordProcessedEventEvenWhenNoActiveExecutionsFound() {
-            when(repository.findByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
+            when(repository.lockByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
                     .thenReturn(List.of());
 
             cancelPendingService.execute(COMMAND);
@@ -152,6 +186,7 @@ class CancelPendingExecutionsServiceTest {
             cancelPendingService.execute(COMMAND);
 
             verifyNoInteractions(repository);
+            verifyNoInteractions(outboxEventRepository);
             verify(processedEventRepository, never()).save(any());
         }
     }
