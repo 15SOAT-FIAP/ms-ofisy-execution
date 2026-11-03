@@ -42,7 +42,7 @@ A separação é feita pelo nome: classes terminadas em `IT` são excluídas do 
 O `ExecutionEventsListenerIT` publica mensagens direto na fila do LocalStack e usa **Awaitility** para esperar o processamento assíncrono. Cenários cobertos:
 
 - o mesmo `QuoteApproved` entregue duas vezes cria as execuções só uma vez;
-- o mesmo `ServiceOrderCancelled` entregue duas vezes cancela as execuções `PENDING` e `IN_PROGRESS` da OS só uma vez e mantém a `COMPLETED`;
+- o mesmo `ServiceOrderCancelled` entregue duas vezes cancela as execuções `PENDING` e `IN_PROGRESS` da OS só uma vez, mantém a `COMPLETED` e grava um único `AllExecutionsCancelled` no outbox;
 - um evento sem handler é confirmado e não altera o banco.
 
 O `JpaServiceOrderExecutionRepositoryIT` usa `@DataJpaTest` contra o PostgreSQL do Testcontainers para validar a query nativa do tempo médio de execução. Cenários cobertos:

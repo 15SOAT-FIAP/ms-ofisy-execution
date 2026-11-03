@@ -67,8 +67,8 @@ public class ServiceOrderExecutionRepositoryImpl implements ServiceOrderExecutio
     }
 
     @Override
-    public List<ServiceOrderExecution> findByServiceOrderIdAndStatusIn(UUID serviceOrderId, Collection<ServiceOrderExecutionStatus> statuses) {
-        return jpa.findByServiceOrderIdAndStatusIn(serviceOrderId, statuses)
+    public List<ServiceOrderExecution> lockByServiceOrderIdAndStatusIn(UUID serviceOrderId, Collection<ServiceOrderExecutionStatus> statuses) {
+        return jpa.findByServiceOrderIdAndStatusInOrderById(serviceOrderId, statuses)
                 .stream()
                 .map(ServiceOrderExecutionMapper::toDomain)
                 .toList();

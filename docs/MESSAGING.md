@@ -73,7 +73,7 @@ Todo evento segue o mesmo envelope (`adapters/listeners/dto/EventEnvelope.java`)
 
 #### `ServiceOrderCancelled`
 
-Segue a mesma regra do core: ao cancelar a OS, o `CancelServiceOrderService` chama o `CancelPendingExecutionsUseCase`, que cancela todas as execuções ativas (`PENDING` e `IN_PROGRESS`) e preserva as já concluídas. Aqui o mesmo caso de uso é acionado pelo evento, via `ServiceOrderCancelledHandler`. Nenhum evento é publicado de volta.
+Segue a mesma regra do core: ao cancelar a OS, o `CancelServiceOrderService` chama o `CancelPendingExecutionsUseCase`, que cancela todas as execuções ativas (`PENDING` e `IN_PROGRESS`) e preserva as já concluídas. Aqui o mesmo caso de uso é acionado pelo evento, via `ServiceOrderCancelledHandler`, e publica um [`AllExecutionsCancelled`](#allexecutionscancelled).
 
 O payload é vazio: o cancelamento só precisa do `serviceOrderId`, que já vem no envelope.
 
@@ -95,6 +95,7 @@ Todos saem pelo outbox, descrito em [Publicação de eventos](#publicação-de-e
 |--------------------------|---------------------------------------------------------------------------------------------------------|------------------------------------------------------------|
 | `ExecutionStarted`       | Ao iniciar a **primeira** execução de uma OS (`PATCH /{id}/start`)                                      | Core: move a OS de `AWAITING_EXECUTION` para `IN_PROGRESS` |
 | `AllExecutionsCompleted` | Ao concluir a **última** execução pendente de uma OS, sem contar as canceladas (`PATCH /{id}/complete`) | Core: move a OS de `IN_PROGRESS` para `FINISHED`           |
+| `AllExecutionsCancelled` | Ao processar um `ServiceOrderCancelled`, depois de cancelar as execuções ativas da OS                   | Ms de estoque: devolve os itens consumidos na OS           |
 
 #### `ExecutionStarted`
 
@@ -132,6 +133,24 @@ Depois de concluir uma execução, se **nenhuma** execução da OS está `PENDIN
 
 **Concorrência:** sem cuidado, as duas últimas execuções concluídas ao mesmo tempo não enxergariam uma à outra, nenhuma publicaria o evento e a OS ficaria parada (o core tem esse risco). Por isso, a conclusão trava todas as execuções da OS com `SELECT ... FOR UPDATE` (`lockAllFromSameServiceOrder`, ordenado por `id` para evitar deadlock) antes de verificar a regra. As conclusões de uma mesma OS são serializadas, e a última sempre vê as anteriores e publica um único evento.
 
+#### `AllExecutionsCancelled`
+
+Depois de cancelar as execuções `PENDING` e `IN_PROGRESS` da OS, o `CancelPendingExecutionsService` grava o evento no outbox na mesma transação do cancelamento e do registro em `processed_events`. O evento sai **sempre** que um `ServiceOrderCancelled` novo é processado, mesmo que a OS não tenha nenhuma execução ativa. O payload é vazio, como nos demais.
+
+```json
+{
+  "eventId": "7d8e9f0a-1b2c-4d3e-9f4a-5b6c7d8e9f0a",
+  "type": "AllExecutionsCancelled",
+  "serviceOrderId": "c3d4e5f6-a7b8-9012-cdef-123456780001",
+  "occurredAt": "2026-10-20T10:00:01.123456Z",
+  "payload": {}
+}
+```
+
+**Idempotência:** um `ServiceOrderCancelled` reentregue é descartado pelo `processed_events` antes de chegar aqui, então não gera um segundo `AllExecutionsCancelled`. Se o cancelamento de alguma execução falhar, a transação é desfeita e o evento não é gravado.
+
+**Concorrência:** sem cuidado, um cancelamento e a conclusão da última execução ativa da OS ao mesmo tempo gravariam `AllExecutionsCompleted` e `AllExecutionsCancelled` para a mesma OS, e o cancelamento ainda sobrescreveria a execução concluída. Por isso, o cancelamento trava as execuções ativas com `SELECT ... FOR UPDATE` (`lockByServiceOrderIdAndStatusIn`, ordenado por `id`, como a conclusão, para evitar deadlock). Se a conclusão vier primeiro, o cancelamento espera e, ao reavaliar o filtro de status, já não encontra a execução concluída. Se o cancelamento vier primeiro, a conclusão espera e recusa a transição de `CANCELLED` para `COMPLETED`.
+
 ---
 
 ## Fluxo de processamento
@@ -165,7 +184,7 @@ sequenceDiagram
     end
 ```
 
-O diagrama mostra o `QuoteApproved`. O `ServiceOrderCancelled` segue o mesmo caminho: o `ServiceOrderCancelledHandler` chama o `CancelPendingExecutionsService`, que confere o `processed_events`, cancela as execuções ativas e registra o evento na mesma transação.
+O diagrama mostra o `QuoteApproved`. O `ServiceOrderCancelled` segue o mesmo caminho: o `ServiceOrderCancelledHandler` chama o `CancelPendingExecutionsService`, que confere o `processed_events`, cancela as execuções ativas, grava o `AllExecutionsCancelled` no outbox e registra o `eventId` em `processed_events`, tudo na mesma transação.
 
 O `ExecutionEventsListener` não conhece os eventos: ele recebe todos os `EventHandler` registrados no Spring e despacha pelo `type`. Cada tipo de evento tem seu próprio handler em `adapters/listeners/handlers/`.
 

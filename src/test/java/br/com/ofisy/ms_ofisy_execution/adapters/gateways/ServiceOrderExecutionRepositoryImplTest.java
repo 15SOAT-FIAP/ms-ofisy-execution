@@ -213,7 +213,7 @@ class ServiceOrderExecutionRepositoryImplTest {
 
 
     @Test
-    void shouldFindByServiceOrderIdAndStatusIn() {
+    void shouldLockByServiceOrderIdAndStatusIn() {
         UUID serviceOrderId = UUID.randomUUID();
 
         Collection<ServiceOrderExecutionStatus> statuses =
@@ -222,14 +222,14 @@ class ServiceOrderExecutionRepositoryImplTest {
                         ServiceOrderExecutionStatus.COMPLETED
                 );
 
-        when(jpa.findByServiceOrderIdAndStatusIn(
+        when(jpa.findByServiceOrderIdAndStatusInOrderById(
                 serviceOrderId,
                 statuses))
                 .thenReturn(List.of());
 
 
         List<ServiceOrderExecution> result =
-                repository.findByServiceOrderIdAndStatusIn(
+                repository.lockByServiceOrderIdAndStatusIn(
                         serviceOrderId,
                         statuses);
 
@@ -238,7 +238,7 @@ class ServiceOrderExecutionRepositoryImplTest {
         assertTrue(result.isEmpty());
 
         verify(jpa)
-                .findByServiceOrderIdAndStatusIn(
+                .findByServiceOrderIdAndStatusInOrderById(
                         serviceOrderId,
                         statuses);
     }
