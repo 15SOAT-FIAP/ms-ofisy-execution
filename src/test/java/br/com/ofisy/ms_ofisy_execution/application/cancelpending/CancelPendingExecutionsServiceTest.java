@@ -148,13 +148,28 @@ class CancelPendingExecutionsServiceTest {
         }
 
         @Test
-        void shouldRecordAllExecutionsCancelledEvenWhenNoActiveExecutionsFound() {
+        void shouldRecordAllExecutionsCancelledWhenServiceOrderHasNoExecutions() {
             when(repository.lockByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
                     .thenReturn(List.of());
+            when(repository.countByServiceOrderIdAndStatus(SERVICE_ORDER_ID, ServiceOrderExecutionStatus.COMPLETED))
+                    .thenReturn(0L);
 
             cancelPendingService.execute(COMMAND);
 
             verify(outboxEventRepository).save(any());
+        }
+
+        @Test
+        void shouldNotRecordAllExecutionsCancelledWhenAllExecutionsAreCompleted() {
+            when(repository.lockByServiceOrderIdAndStatusIn(eq(SERVICE_ORDER_ID), anyCollection()))
+                    .thenReturn(List.of());
+            when(repository.countByServiceOrderIdAndStatus(SERVICE_ORDER_ID, ServiceOrderExecutionStatus.COMPLETED))
+                    .thenReturn(2L);
+
+            cancelPendingService.execute(COMMAND);
+
+            verify(outboxEventRepository, never()).save(any());
+            verify(processedEventRepository).save(any());
         }
 
         @Test
