@@ -95,7 +95,7 @@ Todos saem pelo outbox, descrito em [Publicação de eventos](#publicação-de-e
 |--------------------------|---------------------------------------------------------------------------------------------------------|------------------------------------------------------------|
 | `ExecutionStarted`       | Ao iniciar a **primeira** execução de uma OS (`PATCH /{id}/start`)                                      | Core: move a OS de `AWAITING_EXECUTION` para `IN_PROGRESS` |
 | `AllExecutionsCompleted` | Ao concluir a **última** execução pendente de uma OS, sem contar as canceladas (`PATCH /{id}/complete`) | Core: move a OS de `IN_PROGRESS` para `FINISHED`           |
-| `AllExecutionsCancelled` | Ao processar um `ServiceOrderCancelled`, depois de cancelar as execuções ativas da OS                   | Ms de estoque: devolve os itens consumidos na OS           |
+| `AllExecutionsCancelled` | Ao processar um `ServiceOrderCancelled`, salvo se a OS já foi concluída                                 | Ms de estoque: devolve os itens consumidos na OS           |
 
 #### `ExecutionStarted`
 
@@ -135,7 +135,11 @@ Depois de concluir uma execução, se **nenhuma** execução da OS está `PENDIN
 
 #### `AllExecutionsCancelled`
 
-Depois de cancelar as execuções `PENDING` e `IN_PROGRESS` da OS, o `CancelPendingExecutionsService` grava o evento no outbox na mesma transação do cancelamento e do registro em `processed_events`. O evento sai **sempre** que um `ServiceOrderCancelled` novo é processado, mesmo que a OS não tenha nenhuma execução ativa. O payload é vazio, como nos demais.
+Depois de cancelar as execuções `PENDING` e `IN_PROGRESS` da OS, o `CancelPendingExecutionsService` grava o evento no outbox na mesma transação do cancelamento e do registro em `processed_events`. O payload é vazio, como nos demais.
+
+O evento sai sempre que um `ServiceOrderCancelled` novo é processado, com uma exceção: se a OS não tem execução ativa e tem pelo menos uma `COMPLETED`, ela já foi concluída e o `AllExecutionsCompleted` já saiu. Isso acontece quando o core cancela a OS antes de consumir o `AllExecutionsCompleted`. Nesse caso o evento não é gravado, para o estoque não devolver itens de serviços realizados. O `eventId` é registrado em `processed_events` do mesmo jeito.
+
+Uma OS sem nenhuma execução (cancelada antes do `QuoteApproved`) ou só com execuções canceladas continua publicando o evento, mesmo sem nada para cancelar, para a saga seguir e a OS não ficar presa.
 
 ```json
 {

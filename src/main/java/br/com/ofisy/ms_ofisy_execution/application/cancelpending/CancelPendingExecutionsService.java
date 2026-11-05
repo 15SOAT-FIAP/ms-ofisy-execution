@@ -4,6 +4,7 @@ import br.com.ofisy.ms_ofisy_execution.domain.OutboxEvent;
 import br.com.ofisy.ms_ofisy_execution.domain.OutboxEventRepository;
 import br.com.ofisy.ms_ofisy_execution.domain.ProcessedEvent;
 import br.com.ofisy.ms_ofisy_execution.domain.ProcessedEventRepository;
+import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecution;
 import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecutionRepository;
 import br.com.ofisy.ms_ofisy_execution.domain.ServiceOrderExecutionStatus;
 import lombok.RequiredArgsConstructor;
@@ -34,13 +35,20 @@ public class CancelPendingExecutionsService implements CancelPendingExecutionsUs
                 ServiceOrderExecutionStatus.PENDING,
                 ServiceOrderExecutionStatus.IN_PROGRESS
         );
-        repository.lockByServiceOrderIdAndStatusIn(cmd.serviceOrderId(), activeStatuses)
-                .forEach(execution -> {
-                    execution.cancel();
-                    repository.save(execution);
-                });
+        List<ServiceOrderExecution> activeExecutions =
+                repository.lockByServiceOrderIdAndStatusIn(cmd.serviceOrderId(), activeStatuses);
+        activeExecutions.forEach(execution -> {
+            execution.cancel();
+            repository.save(execution);
+        });
 
-        outboxEventRepository.save(OutboxEvent.create(ALL_EXECUTIONS_CANCELLED, cmd.serviceOrderId(), Map.of()));
+        boolean serviceOrderAlreadyCompleted = activeExecutions.isEmpty()
+                && repository.countByServiceOrderIdAndStatus(cmd.serviceOrderId(), ServiceOrderExecutionStatus.COMPLETED) > 0;
+
+        if (!serviceOrderAlreadyCompleted) {
+            outboxEventRepository.save(OutboxEvent.create(ALL_EXECUTIONS_CANCELLED, cmd.serviceOrderId(), Map.of()));
+        }
+
         processedEventRepository.save(ProcessedEvent.create(cmd.eventId(), cmd.eventType()));
     }
 }
