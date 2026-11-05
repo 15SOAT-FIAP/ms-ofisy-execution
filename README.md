@@ -62,6 +62,8 @@ br.com.ofisy.ms_ofisy_execution
 | Spring Data JPA      | Persistência e mapeamento ORM                                            | `spring-boot-starter-data-jpa`                                                                                            |
 | Spring Validation    | Validação de DTOs e beans                                                | `spring-boot-starter-validation`                                                                                          |
 | Spring Actuator      | Endpoint de saúde (`/actuator/health`)                                   | `spring-boot-starter-actuator`                                                                                            |
+| Micrometer Datadog   | Exportação de métricas para o Datadog (ativa só no perfil `k8s`)         | `micrometer-registry-datadog`                                                                                             |
+| Logstash Encoder     | Logs em JSON com correlação de traces do Datadog no perfil `k8s`         | `logstash-logback-encoder`                                                                                                |
 | Flyway               | Versionamento do schema, com suporte ao dialeto do PostgreSQL            | `spring-boot-starter-flyway`, `flyway-database-postgresql`                                                                |
 | PostgreSQL           | Driver JDBC                                                              | `postgresql`                                                                                                              |
 | Docker Compose       | Sobe o `compose.db.yaml` automaticamente ao rodar a aplicação localmente | `spring-boot-docker-compose`                                                                                              |
@@ -82,14 +84,20 @@ br.com.ofisy.ms_ofisy_execution
 - `application.yaml`: configuração base (datasource em `localhost:5433`, Flyway, região AWS e nome da fila). O perfil ativo por padrão é `dev`;
 - `application-dev.yaml`: aponta o SDK da AWS para o LocalStack em `localhost:4566`;
 - `application-docker.yaml`: configuração usada quando a aplicação roda dentro do `compose.yaml`;
+- `application-k8s.yaml`: configuração usada no EKS (RDS via `POSTGRES_HOST`, probes do Kubernetes e AWS real);
+- `logback-spring.xml`: logs em JSON para o Datadog no perfil `k8s` e console padrão nos demais;
 - `pom.xml`: dependências e plugins do Maven.
 
 ### Docker
 
-- `Dockerfile`: build multi-stage da aplicação;
+- `Dockerfile`: build multi-stage da aplicação. A imagem inclui o `dd-java-agent` do Datadog com versão e checksum fixos, ativado só no k8s via `JAVA_TOOL_OPTIONS`;
 - `compose.yaml`: ambiente completo (PostgreSQL, LocalStack e aplicação);
 - `compose.db.yaml`: apenas PostgreSQL e LocalStack, para rodar a aplicação na IDE;
 - `.dockerignore`: arquivos ignorados no build da imagem.
+
+### Kubernetes
+
+- `k8s/`: manifestos do deploy no EKS (`configmap`, `secret`, `deployment`, `service` e `hpa`). Ver [Deploy no EKS](#deploy-no-eks).
 
 ### Mensageria e utilitários locais
 
@@ -177,12 +185,41 @@ Para ver todos os comandos disponíveis, rode `make help`.
 
 ## Variáveis de ambiente
 
-| Variável            | Descrição                                                   |
-|---------------------|-------------------------------------------------------------|
-| `POSTGRES_DB`       | Nome do banco de dados                                      |
-| `POSTGRES_USER`     | Usuário do banco                                            |
-| `POSTGRES_PASSWORD` | Senha do banco                                              |
-| `JWT_SECRET`        | Chave HS256 para validar o JWT. Precisa ser a mesma do core |
+| Variável                           | Descrição                                                    |
+|------------------------------------|--------------------------------------------------------------|
+| `POSTGRES_DB`                      | Nome do banco de dados                                       |
+| `POSTGRES_USER`                    | Usuário do banco                                             |
+| `POSTGRES_PASSWORD`                | Senha do banco                                               |
+| `JWT_SECRET`                       | Chave HS256 para validar o JWT. Precisa ser a mesma do core  |
+| `POSTGRES_HOST`                    | Host do banco no perfil `k8s`                                |
+| `DD_METRICS_ENABLED`, `DD_API_KEY` | Exportação de métricas para o Datadog (desligada por padrão) |
+
+---
+
+## Deploy no EKS
+
+A infraestrutura vem de outros repositórios:
+
+- `techchallenge-ofisy-eks-infra` (`eks/execution`): cluster `ms-ofisy-execution-cluster`, ECR `ms-ofisy-execution-ecr` e Datadog Agent;
+- `techchallenge-ofisy-db-infra` (`execution`): RDS `ms-ofisy-execution-db`, banco `ms_ofisy_execution_db`.
+
+Os manifestos em `k8s/` têm placeholders que precisam ser substituídos antes do `kubectl apply`:
+
+| Arquivo          | Placeholder                                                                            | Valor                                                                    |
+|------------------|----------------------------------------------------------------------------------------|--------------------------------------------------------------------------|
+| `configmap.yml`  | `<RDS_ADDRESS>`                                                                        | Endereço do RDS `ms-ofisy-execution-db`                                  |
+| `configmap.yml`  | `<IMAGE_TAG>`                                                                          | Tag da imagem, usada como `DD_VERSION`                                   |
+| `deployment.yml` | `<IMAGE_TAG>` (label `tags.datadoghq.com/version`)                                     | Mesma tag da imagem                                                      |
+| `deployment.yml` | `<ECR_REPOSITORY_URL>:<IMAGE_TAG>`                                                     | `<account>.dkr.ecr.us-east-1.amazonaws.com/ms-ofisy-execution-ecr:<tag>` |
+| `secret.yml`     | `<BASE64_USERNAME>`, `<BASE64_PASSWORD>`, `<BASE64_JWT_SECRET>`, `<BASE64_DD_API_KEY>` | Valores em base64                                                        |
+
+```bash
+aws eks update-kubeconfig --region us-east-1 --name ms-ofisy-execution-cluster
+kubectl apply -f k8s/secret.yml -f k8s/configmap.yml -f k8s/deployment.yml -f k8s/service.yml -f k8s/hpa.yml
+kubectl rollout status deployment/ms-ofisy-execution-deployment --timeout=300s
+```
+
+O acesso ao SNS/SQS usa as credenciais da `LabRole` dos nós, sem chaves no manifesto. O HPA depende do Metrics Server no cluster; sem ele, o deployment fica nas 2 réplicas mínimas. O `Service` cria um NLB interno na porta `8080`.
 
 ---
 
