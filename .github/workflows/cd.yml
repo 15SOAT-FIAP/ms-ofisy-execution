@@ -1,0 +1,142 @@
+name: Deploy Manual na AWS (CD)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag ou commit a ser implantado"
+        required: false
+        default: master
+
+env:
+  AWS_REGION: us-east-1
+  EKS_CLUSTER: ms-ofisy-execution-cluster
+  ECR_REPOSITORY: ms-ofisy-execution-ecr
+  RDS_IDENTIFIER: ms-ofisy-execution-db
+
+jobs:
+  deploy-to-aws:
+    name: Deploy Manual na AWS (Kubernetes EKS)
+    runs-on: ubuntu-latest
+    environment: AWS_ACADEMY
+
+    concurrency:
+      group: deploy-aws
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Configurar Credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Obter Endereço do RDS (PostgreSQL)
+        run: |
+          aws rds wait db-instance-available --db-instance-identifier "$RDS_IDENTIFIER"
+          RDS_ENDPOINT=$(aws rds describe-db-instances --db-instance-identifier "$RDS_IDENTIFIER" --query "DBInstances[0].Endpoint.Address" --output text)
+          if [ -z "$RDS_ENDPOINT" ] || [ "$RDS_ENDPOINT" == "None" ]; then
+            echo "::error::Endereço do RDS $RDS_IDENTIFIER não encontrado. Provisione o banco pelo techchallenge-ofisy-db-infra."
+            exit 1
+          fi
+          echo "::add-mask::$RDS_ENDPOINT"
+          echo "RDS_HOST=$RDS_ENDPOINT" >> "$GITHUB_ENV"
+          echo "RDS Host configurado com sucesso."
+
+      - name: Conectar ao EKS Cluster
+        run: |
+          aws eks update-kubeconfig --region "$AWS_REGION" --name "$EKS_CLUSTER"
+
+      - name: Instalar/Atualizar Metrics Server
+        continue-on-error: true
+        run: |
+          kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+
+          kubectl patch deployment metrics-server -n kube-system --type='json' \
+            -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]' \
+            || true
+
+          kubectl rollout status deployment/metrics-server -n kube-system --timeout=180s
+
+      - name: Login no Amazon ECR
+        run: |
+          aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+
+      - name: Enviar Imagem para o ECR
+        run: |
+          IMAGE_TAG=$(git rev-parse --short HEAD)
+          IMAGE_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+          echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
+
+          if aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$IMAGE_TAG" > /dev/null 2> ecr-error.txt; then
+            echo "Imagem $IMAGE_TAG já existe no ECR (tags imutáveis). Reaproveitando sem novo build."
+            exit 0
+          fi
+          if ! grep -q ImageNotFoundException ecr-error.txt; then
+            cat ecr-error.txt
+            exit 1
+          fi
+
+          docker build -t "$IMAGE_URI" .
+          docker push "$IMAGE_URI"
+
+      - name: Deploy dos Manifestos no EKS
+        env:
+          DB_PASS: ${{ secrets.DB_PASSWORD }}
+          JWT_SEC: ${{ secrets.JWT_SECRET }}
+          DD_KEY: ${{ secrets.DD_API_KEY }}
+        run: |
+          BASE64_USER=$(echo -n "admin_db" | base64 -w 0)
+          BASE64_PASS=$(echo -n "$DB_PASS" | base64 -w 0)
+          BASE64_JWT=$(echo -n "$JWT_SEC" | base64 -w 0)
+          BASE64_DD_KEY=$(echo -n "$DD_KEY" | base64 -w 0)
+
+          sed -i "s|<BASE64_USERNAME>|$BASE64_USER|g" k8s/secret.yml
+          sed -i "s|<BASE64_PASSWORD>|$BASE64_PASS|g" k8s/secret.yml
+          sed -i "s|<BASE64_JWT_SECRET>|$BASE64_JWT|g" k8s/secret.yml
+          sed -i "s|<BASE64_DD_API_KEY>|$BASE64_DD_KEY|g" k8s/secret.yml
+
+          sed -i "s|<RDS_ADDRESS>|$RDS_HOST|g" k8s/configmap.yml
+          sed -i "s|<IMAGE_TAG>|$IMAGE_TAG|g" k8s/configmap.yml
+
+          sed -i "s|<ECR_REPOSITORY_URL>:<IMAGE_TAG>|$IMAGE_URI|g" k8s/deployment.yml
+          sed -i "s|<IMAGE_TAG>|$IMAGE_TAG|g" k8s/deployment.yml
+
+          kubectl apply -f k8s/secret.yml
+          kubectl apply -f k8s/configmap.yml
+          kubectl apply -f k8s/deployment.yml
+          kubectl apply -f k8s/service.yml
+          kubectl apply -f k8s/hpa.yml
+
+          kubectl rollout status deployment/ms-ofisy-execution-deployment --timeout=300s
+
+          echo "Aguardando DNS do Load Balancer estar disponível..."
+          NLB_HOST=""
+          for i in {1..30}; do
+            NLB_HOST=$(kubectl get svc ms-ofisy-execution-service -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+            if [ -n "$NLB_HOST" ]; then
+              echo "Load Balancer DNS obtido: $NLB_HOST"
+              break
+            fi
+            echo "Aguardando 10 segundos (tentativa $i de 30)..."
+            sleep 10
+          done
+
+          {
+            echo ""
+            echo "### Deploy concluído"
+            echo "- Imagem: \`$IMAGE_URI\`"
+            if [ -n "$NLB_HOST" ]; then
+              echo "- NLB interno: \`http://$NLB_HOST:8080\` (acesso externo pelo API Gateway)"
+            else
+              echo "- Não foi possível obter o DNS do Load Balancer a tempo."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
