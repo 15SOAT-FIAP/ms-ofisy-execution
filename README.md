@@ -112,9 +112,11 @@ br.com.ofisy.ms_ofisy_execution
 - `.env`: variáveis sensíveis. **Não é versionado**;
 - `env.example`: modelo do `.env`.
 
-### CI (GitHub Actions)
+### CI/CD (GitHub Actions)
 
 - `.github/workflows/ci.yml`: build, testes e gate de cobertura (`mvn verify`) a cada push/PR na `master`;
+- `.github/workflows/cd.yml`: deploy manual no EKS. Ver [Deploy no EKS](#deploy-no-eks);
+- `.github/workflows/destroy-app.yml`: remove manualmente os recursos da aplicação do cluster;
 - `.github/workflows/notify-pr.yml`: notifica abertura e fechamento de Pull Requests no Discord.
 
 ---
@@ -203,6 +205,39 @@ A infraestrutura vem de outros repositórios:
 - `techchallenge-ofisy-eks-infra` (`eks/execution`): cluster `ms-ofisy-execution-cluster`, ECR `ms-ofisy-execution-ecr` e Datadog Agent;
 - `techchallenge-ofisy-db-infra` (`execution`): RDS `ms-ofisy-execution-db`, banco `ms_ofisy_execution_db`.
 
+### Pelo workflow (padrão)
+
+Rode o workflow **Deploy Manual na AWS (CD)** (`cd.yml`) informando a branch, tag ou commit. Ele:
+
+1. espera o RDS ficar disponível e busca o endereço dele. Se o banco não existir, o deploy para com erro;
+2. instala o Metrics Server, usado pelo HPA;
+3. builda a imagem e envia ao ECR com a tag do commit curto. Se a tag já existir, reaproveita a imagem, porque o ECR não aceita sobrescrever tags;
+4. substitui os placeholders dos manifestos, aplica no cluster e espera o rollout.
+
+Usa o environment `AWS_ACADEMY` com os secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_ACCOUNT_ID`, `DB_PASSWORD`, `JWT_SECRET` e `DD_API_KEY`.
+
+Para remover a aplicação do cluster (por exemplo, antes de destruir o EKS), rode **Destruir Aplicação no Kubernetes (EKS)** (`destroy-app.yml`).
+
+#### Exposição pelo API Gateway
+
+O `Service` cria um NLB interno, e o API Gateway do `techchallenge-ofisy-eks-infra` encontra esse NLB pela tag `kubernetes.io/service-name`. Depois do primeiro deploy, altere o `api-gateway/` desse repositório:
+
+1. em `variables.tf`, inclua o serviço no default de `nlb_service_names`:
+   ```hcl
+   execution = "default/ms-ofisy-execution-service"
+   ```
+2. em `main.tf`, inclua as rotas do execution em `local.service_routes`. Sem elas, as requisições continuam caindo no `ANY /{proxy+}`, que vai para o core:
+   ```hcl
+   "ANY /api/v1/service_order_executions"          = { service = "execution", protected = false }
+   "ANY /api/v1/service_order_executions/{proxy+}" = { service = "execution", protected = false }
+   ```
+   `protected = false` porque o JWT é validado pela própria aplicação, e não pelo authorizer de clientes do Gateway;
+3. rode o deploy do API Gateway.
+
+Cada vez que o `Service` é recriado (por exemplo, depois do `destroy-app.yml`), o NLB muda e o deploy do API Gateway precisa rodar de novo. Antes de destruir a aplicação sem recriá-la, tire a entrada `execution` de `nlb_service_names`, senão o próximo deploy do Gateway falha ao procurar o NLB.
+
+### Manualmente
+
 Os manifestos em `k8s/` têm placeholders que precisam ser substituídos antes do `kubectl apply`:
 
 | Arquivo          | Placeholder                                                                            | Valor                                                                    |
@@ -219,7 +254,7 @@ kubectl apply -f k8s/secret.yml -f k8s/configmap.yml -f k8s/deployment.yml -f k8
 kubectl rollout status deployment/ms-ofisy-execution-deployment --timeout=300s
 ```
 
-O acesso ao SNS/SQS usa as credenciais da `LabRole` dos nós, sem chaves no manifesto. O HPA depende do Metrics Server no cluster; sem ele, o deployment fica nas 2 réplicas mínimas. O `Service` cria um NLB interno na porta `8080`.
+O acesso ao SNS/SQS usa as credenciais da `LabRole` dos nós, sem chaves no manifesto. O HPA depende do Metrics Server no cluster (o workflow instala); sem ele, o deployment fica nas 2 réplicas mínimas.
 
 ---
 
