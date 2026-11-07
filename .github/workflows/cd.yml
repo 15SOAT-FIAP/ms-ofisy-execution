@@ -7,6 +7,11 @@ on:
         description: "Branch, tag ou commit a ser implantado"
         required: false
         default: master
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: master
 
 env:
   AWS_REGION: us-east-1
@@ -21,13 +26,14 @@ jobs:
     environment: AWS_ACADEMY
 
     concurrency:
-      group: deploy-aws
+      group: deploy-ms-ofisy-execution
       cancel-in-progress: false
 
     steps:
       - name: Checkout do código
         uses: actions/checkout@v7
         with:
+          repository: 15SOAT-FIAP/ms-ofisy-execution
           ref: ${{ inputs.ref }}
 
       - name: Configurar Credenciais AWS
