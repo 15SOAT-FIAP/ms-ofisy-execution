@@ -216,7 +216,13 @@ Rode o workflow **Deploy Manual na AWS (CD)** (`cd.yml`) informando a branch, ta
 
 Usa o environment `AWS_ACADEMY` com os secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_ACCOUNT_ID`, `DB_PASSWORD`, `JWT_SECRET` e `DD_API_KEY`.
 
-Para remover a aplicação do cluster (por exemplo, antes de destruir o EKS), rode **Destruir Aplicação no Kubernetes (EKS)** (`destroy-app.yml`).
+Para remover a aplicação do cluster (por exemplo, antes de destruir o EKS), rode **Destruir Aplicação no Kubernetes (EKS)** (`destroy-app.yml`). Se o cluster já não existir, ele termina com sucesso sem fazer nada, então pode ser executado de novo sem quebrar.
+
+#### Orquestração pelo ofisy-platform
+
+Além do `workflow_dispatch`, o `cd.yml` e o `destroy-app.yml` aceitam `workflow_call`, e o repositório [ofisy-platform](https://github.com/15SOAT-FIAP/ofisy-platform) os chama pelo `up.yml` (sobe o ambiente) e pelo `down.yml` (destrói), na etapa dos microsserviços da ordem descrita no `techchallenge-ofisy-eks-infra`. Os secrets chegam por `secrets: inherit`, e o input `ref` é o mesmo do disparo manual. O checkout sempre aponta para este repositório, mesmo quando o workflow é chamado de outro.
+
+Nenhuma etapa recebe outputs deste repositório: o cluster, o ECR e o RDS são encontrados pelo nome, e o API Gateway encontra o NLB pela tag do `Service`.
 
 #### Exposição pelo API Gateway
 
