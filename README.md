@@ -212,7 +212,7 @@ Rode o workflow **Deploy Manual na AWS (CD)** (`cd.yml`) informando a branch, ta
 1. espera o RDS ficar disponível e busca o endereço dele. Se o banco não existir, o deploy para com erro;
 2. instala o Metrics Server, usado pelo HPA;
 3. builda a imagem e envia ao ECR com a tag do commit curto. Se a tag já existir, reaproveita a imagem, porque o ECR não aceita sobrescrever tags;
-4. substitui os placeholders dos manifestos, aplica no cluster e espera o rollout.
+4. substitui os placeholders dos manifestos, aplica no cluster e espera o rollout. A annotation `checksum/config` recebe o hash do ConfigMap e do Secret, então os pods são recriados quando a imagem ou a configuração mudam, mesmo rodando o CD de novo no mesmo commit.
 
 Usa o environment `AWS_ACADEMY` com os secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_ACCOUNT_ID`, `DB_PASSWORD`, `JWT_SECRET` e `DD_API_KEY`.
 
@@ -246,6 +246,7 @@ Os manifestos em `k8s/` têm placeholders que precisam ser substituídos antes d
 | `configmap.yml`  | `<IMAGE_TAG>`                                                                          | Tag da imagem, usada como `DD_VERSION`                                   |
 | `deployment.yml` | `<IMAGE_TAG>` (label `tags.datadoghq.com/version`)                                     | Mesma tag da imagem                                                      |
 | `deployment.yml` | `<ECR_REPOSITORY_URL>:<IMAGE_TAG>`                                                     | `<account>.dkr.ecr.us-east-1.amazonaws.com/ms-ofisy-execution-ecr:<tag>` |
+| `deployment.yml` | `<CONFIG_HASH>` (annotation `checksum/config`)                                         | SHA-256 do `configmap.yml` e do `secret.yml` já substituídos             |
 | `secret.yml`     | `<BASE64_USERNAME>`, `<BASE64_PASSWORD>`, `<BASE64_JWT_SECRET>`, `<BASE64_DD_API_KEY>` | Valores em base64                                                        |
 
 ```bash
