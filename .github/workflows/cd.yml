@@ -107,8 +107,11 @@ jobs:
           sed -i "s|<RDS_ADDRESS>|$RDS_HOST|g" k8s/configmap.yml
           sed -i "s|<IMAGE_TAG>|$IMAGE_TAG|g" k8s/configmap.yml
 
+          CONFIG_HASH=$(cat k8s/configmap.yml k8s/secret.yml | sha256sum | cut -d' ' -f1)
+
           sed -i "s|<ECR_REPOSITORY_URL>:<IMAGE_TAG>|$IMAGE_URI|g" k8s/deployment.yml
           sed -i "s|<IMAGE_TAG>|$IMAGE_TAG|g" k8s/deployment.yml
+          sed -i "s|<CONFIG_HASH>|$CONFIG_HASH|g" k8s/deployment.yml
 
           kubectl apply -f k8s/secret.yml
           kubectl apply -f k8s/configmap.yml

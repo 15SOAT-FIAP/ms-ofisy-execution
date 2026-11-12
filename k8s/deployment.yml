@@ -11,6 +11,7 @@ spec:
         tags.datadoghq.com/env: production
         tags.datadoghq.com/version: "<IMAGE_TAG>"
       annotations:
+        checksum/config: "<CONFIG_HASH>"
         ad.datadoghq.com/ms-ofisy-execution-app.checks: |
           {
             "http_check": {
