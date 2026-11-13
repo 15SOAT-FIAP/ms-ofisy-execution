@@ -32,6 +32,7 @@ erDiagram
         JSONB payload
         TIMESTAMPTZ occurred_at
         TIMESTAMPTZ published_at
+        JSONB trace_context
     }
 ```
 
@@ -99,6 +100,7 @@ Eventos produzidos por este ms, aguardando ou já publicados no SNS ([MESSAGING.
 | `payload`          | `JSONB`        | não  | Dados específicos do tipo de evento                        |
 | `occurred_at`      | `TIMESTAMPTZ`  | não  | Momento do evento, define a ordem de publicação            |
 | `published_at`     | `TIMESTAMPTZ`  | sim  | Preenchido quando o evento é publicado no SNS              |
+| `trace_context`    | `JSONB`        | sim  | Contexto do trace que gerou o evento, restaurado na publicação ([MESSAGING.md](MESSAGING.md#rastreamento-distribuído-pelo-outbox)). Nulo sem o `dd-java-agent` |
 
 As datas usam `TIMESTAMPTZ` porque o `occurredAt` do envelope é um `Instant`.
 

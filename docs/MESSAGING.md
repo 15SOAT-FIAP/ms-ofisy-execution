@@ -247,10 +247,23 @@ sequenceDiagram
 |-----------------------------------------------|------------------------------------------------------------------------|
 | `domain/OutboxEvent`                          | O evento a publicar: tipo, OS e payload. Id e `occurredAt` são gerados |
 | `domain/OutboxEventRepository`                | Porta usada pelos casos de uso. Só tem `save`                          |
-| `adapters/gateways/OutboxEventRepositoryImpl` | Serializa o payload para JSON e grava em `outbox_events`               |
-| `adapters/publishers/OutboxEventPublisher`    | Lê os pendentes, publica o envelope no SNS e marca `published_at`      |
+| `adapters/gateways/OutboxEventRepositoryImpl` | Serializa o payload para JSON e grava em `outbox_events` junto com o contexto do trace atual |
+| `adapters/publishers/OutboxEventPublisher`    | Lê os pendentes, publica o envelope no SNS dentro do trace de origem e marca `published_at` |
+| `adapters/tracing/TraceContextPropagator`     | Captura e restaura o contexto do trace pela API do OpenTelemetry       |
 
 O envelope publicado é o mesmo `EventEnvelope` que este ms consome, então quem assina o tópico recebe o mesmo contrato descrito em [Contrato dos eventos](#contrato-dos-eventos).
+
+### Rastreamento distribuído pelo outbox
+
+O publicador roda em um job agendado, e o `dd-java-agent` abre um trace novo a cada execução dele. Sem tratamento, a publicação no SNS ficaria nesse trace do job e o fluxo de uma OS apareceria quebrado no Datadog, separado da requisição (ou do consumo de mensagem) que gerou o evento.
+
+Para manter o fluxo em um único trace:
+
+1. Ao gravar o evento, o `OutboxEventRepositoryImpl` captura o contexto do trace ativo (`traceparent` e `x-datadog-*`) e o guarda na coluna `trace_context`.
+2. Ao publicar, o `OutboxEventPublisher` restaura esse contexto e cria o span `outbox.publish` como filho do trace de origem, com os atributos `ofisy.event.id`, `ofisy.event.type`, `ofisy.service_order.id` e `messaging.destination.name`.
+3. Com o span de origem ativo, a instrumentação do SNS do `dd-java-agent` injeta o trace nos atributos da mensagem, para que o consumidor do outro ms continue o mesmo trace.
+
+O contexto viaja nos atributos da mensagem, não no envelope, então o contrato dos eventos não muda. A captura usa a API do OpenTelemetry, que o `dd-java-agent` conecta aos spans do Datadog quando `DD_TRACE_OTEL_ENABLED=true` (definido em `k8s/configmap.yml`). Sem o agent, como em ambiente local e nos testes, a API é no-op: nada é capturado e o evento é publicado normalmente. Um `trace_context` ilegível também não impede a publicação, só perde a ligação com o trace de origem.
 
 ### Garantias
 
