@@ -39,7 +39,18 @@ public class TraceContextPropagator {
         return carrier;
     }
 
+    // Publicação do outbox: o span de envio fica como filho do trace que gerou o evento
     public void runWithParent(Map<String, String> parentContext, String spanName, Map<String, String> attributes, Runnable action) {
+        runInSpan(parentContext, spanName, SpanKind.PRODUCER, attributes, action);
+    }
+
+    // Consumo da fila: o processamento continua o trace de quem publicou a mensagem
+    public void runAsConsumer(Map<String, String> parentContext, String spanName, Map<String, String> attributes, Runnable action) {
+        runInSpan(parentContext, spanName, SpanKind.CONSUMER, attributes, action);
+    }
+
+    private void runInSpan(Map<String, String> parentContext, String spanName, SpanKind kind, Map<String, String> attributes,
+                           Runnable action) {
         if (parentContext == null || parentContext.isEmpty()) {
             action.run();
             return;
@@ -49,7 +60,7 @@ public class TraceContextPropagator {
         SpanBuilder builder = GlobalOpenTelemetry.getTracer(INSTRUMENTATION_NAME)
                 .spanBuilder(spanName)
                 .setParent(parent)
-                .setSpanKind(SpanKind.PRODUCER);
+                .setSpanKind(kind);
         attributes.forEach(builder::setAttribute);
         Span span = builder.startSpan();
 
