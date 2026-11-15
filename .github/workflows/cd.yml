@@ -21,7 +21,7 @@ env:
 
 jobs:
   deploy-to-aws:
-    name: Deploy Manual na AWS (Kubernetes EKS)
+    name: Deploy Execution
     runs-on: ubuntu-latest
     environment: AWS_ACADEMY
 
