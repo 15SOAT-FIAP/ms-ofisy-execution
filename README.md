@@ -1,6 +1,6 @@
 # ms-ofisy-execution
 
-FIAP 15SOAT - Tech Challenge - Grupo 81
+FIAP 15SOAT - Tech Challenge - Grupo 87
 
 Microsserviço responsável pela **execução dos serviços de uma ordem de serviço** da Ofisy. Ele consome o evento `QuoteApproved`, publicado pelo ms de billing quando um orçamento é aprovado, e cria uma execução `PENDING` para cada serviço do catálogo que foi aprovado. Também consome o `ServiceOrderCancelled`, publicado pelo core quando a OS é cancelada, e cancela as execuções ainda ativas da OS.
 
@@ -43,8 +43,8 @@ br.com.ofisy.ms_ofisy_execution
 |------------------|----------|--------------------------------------------------------------------|
 | Java             | 21 (LTS) | Linguagem da aplicação                                             |
 | Spring Boot      | 4.1.1    | Framework base                                                     |
-| Spring Cloud AWS | 4.2.0    | Integração com o Amazon SQS                                        |
-| PostgreSQL       | 16       | Banco de dados das execuções                                       |
+| Spring Cloud AWS | 4.2.0    | Integração com o Amazon SNS e o Amazon SQS                         |
+| PostgreSQL       | 15       | Banco de dados das execuções                                       |
 | LocalStack       | 4.13.1   | Emulação de SNS e SQS no ambiente local e nos testes de integração |
 | Maven            | 3.9.x    | Build e gerenciamento de dependências                              |
 | Docker           | —        | Containerização da aplicação e dos serviços dependentes            |
@@ -56,6 +56,7 @@ br.com.ofisy.ms_ofisy_execution
 | Dependência          | Descrição                                                                | Artefato                                                                                                                  |
 |----------------------|--------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|
 | Spring Cloud AWS SQS | Consumo das mensagens da fila via `@SqsListener`                         | `spring-cloud-aws-starter-sqs`                                                                                            |
+| Spring Cloud AWS SNS | Publicação dos eventos do outbox no tópico                               | `spring-cloud-aws-starter-sns`                                                                                            |
 | Spring Web MVC       | Servidor web e API REST                                                  | `spring-boot-starter-webmvc`                                                                                              |
 | OpenAPI / Swagger    | Documentação da API e Swagger UI                                         | `springdoc-openapi-starter-webmvc-ui`                                                                                     |
 | Spring Security      | Autorização das rotas por role                                           | `spring-boot-starter-security`                                                                                            |
@@ -231,19 +232,14 @@ Nenhuma etapa recebe outputs deste repositório: o cluster, o ECR e o RDS são e
 
 #### Exposição pelo API Gateway
 
-O `Service` cria um NLB interno, e o API Gateway do `techchallenge-ofisy-eks-infra` encontra esse NLB pela tag `kubernetes.io/service-name`. Depois do primeiro deploy, altere o `api-gateway/` desse repositório:
+O `Service` cria um NLB interno, e o API Gateway do `techchallenge-ofisy-eks-infra` encontra esse NLB pela tag `kubernetes.io/service-name`. O `api-gateway/` desse repositório já tem o serviço em `nlb_service_names` (`execution = "default/ms-ofisy-execution-service"`) e as rotas em `local.service_routes`:
 
-1. em `variables.tf`, inclua o serviço no default de `nlb_service_names`:
-   ```hcl
-   execution = "default/ms-ofisy-execution-service"
-   ```
-2. em `main.tf`, inclua as rotas do execution em `local.service_routes`. Sem elas, as requisições continuam caindo no `ANY /{proxy+}`, que vai para o core:
-   ```hcl
-   "ANY /api/v1/service_order_executions"          = { service = "execution", protected = false }
-   "ANY /api/v1/service_order_executions/{proxy+}" = { service = "execution", protected = false }
-   ```
-   `protected = false` porque o JWT é validado pela própria aplicação, e não pelo authorizer de clientes do Gateway;
-3. rode o deploy do API Gateway.
+```hcl
+"ANY /api/v1/service_order_executions"          = { service = "execution", protected = false }
+"ANY /api/v1/service_order_executions/{proxy+}" = { service = "execution", protected = false }
+```
+
+`protected = false` porque o JWT é validado pela própria aplicação, e não pelo authorizer de clientes do Gateway.
 
 Cada vez que o `Service` é recriado (por exemplo, depois do `destroy-app.yml`), o NLB muda e o deploy do API Gateway precisa rodar de novo. Antes de destruir a aplicação sem recriá-la, tire a entrada `execution` de `nlb_service_names`, senão o próximo deploy do Gateway falha ao procurar o NLB.
 
