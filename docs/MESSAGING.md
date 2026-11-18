@@ -30,7 +30,7 @@ flowchart LR
 
 Localmente, tudo é criado pelo `localstack/init/ready.d/01-messaging.sh`, que roda quando o LocalStack sobe. Com `queue-not-found-strategy: fail`, a aplicação não inicia se a fila não existir.
 
-Na AWS, os recursos vêm do repositório de infraestrutura. O tópico é configurado pelo **nome**: o `SnsConfig` registra um `TopicsListingTopicArnResolver`, que descobre o ARN listando os tópicos (`sns:ListTopics`) em vez de chamar `CreateTopic`, e guarda o resultado em cache. A aplicação precisa de `sns:ListTopics` e `sns:Publish`.
+Na AWS, os recursos vêm do repositório de infraestrutura. O tópico é configurado pelo **nome**: o `SnsConfig` registra um `TopicsListingTopicArnResolver`, que descobre o ARN listando os tópicos (`sns:ListTopics`) em vez de chamar `CreateTopic`, e guarda o resultado em cache. A aplicação precisa de `sns:ListTopics` e `sns:Publish` e, na fila, de `sqs:GetQueueUrl`, `sqs:ReceiveMessage`, `sqs:DeleteMessage` e `sqs:ChangeMessageVisibility`.
 
 ---
 
@@ -73,7 +73,7 @@ Todo evento segue o mesmo envelope (`adapters/listeners/dto/EventEnvelope.java`)
 
 #### `ServiceOrderCancelled`
 
-Segue a mesma regra do core: ao cancelar a OS, o `CancelServiceOrderService` chama o `CancelPendingExecutionsUseCase`, que cancela todas as execuções ativas (`PENDING` e `IN_PROGRESS`) e preserva as já concluídas. Aqui o mesmo caso de uso é acionado pelo evento, via `ServiceOrderCancelledHandler`, e publica um [`AllExecutionsCancelled`](#allexecutionscancelled).
+Segue a regra que existia no monolito, antes da extração: ao cancelar a OS, todas as execuções ativas (`PENDING` e `IN_PROGRESS`) são canceladas e as já concluídas são preservadas. Aqui o `ServiceOrderCancelledHandler` aciona o `CancelPendingExecutionsUseCase`, que aplica essa regra e publica um [`AllExecutionsCancelled`](#allexecutionscancelled).
 
 O payload é vazio: o cancelamento só precisa do `serviceOrderId`, que já vem no envelope.
 
@@ -129,9 +129,9 @@ Depois de concluir uma execução, se **nenhuma** execução da OS está `PENDIN
 }
 ```
 
-**Execução cancelada:** aqui a regra diverge do core de propósito. No core, uma execução `CANCELLED` impede a OS de chegar a "todas concluídas", e a OS fica parada para sempre. Neste ms, as execuções são canceladas por eventos (por exemplo, serviços retirados do orçamento), então elas não contam para a regra. Uma OS que só tem execuções canceladas nunca passa por aqui, porque nenhuma execução é concluída.
+**Execução cancelada:** aqui a regra diverge do monolito de propósito. No monolito, uma execução `CANCELLED` impedia a OS de chegar a "todas concluídas", e a OS ficava parada para sempre. Neste ms, as execuções canceladas não contam para a regra. Hoje elas só são canceladas pelo `ServiceOrderCancelled`, que cancela todas as ativas da OS de uma vez, então uma OS que só tem execuções canceladas nunca passa por aqui, porque nenhuma execução é concluída.
 
-**Concorrência:** sem cuidado, as duas últimas execuções concluídas ao mesmo tempo não enxergariam uma à outra, nenhuma publicaria o evento e a OS ficaria parada (o core tem esse risco). Por isso, a conclusão trava todas as execuções da OS com `SELECT ... FOR UPDATE` (`lockAllFromSameServiceOrder`, ordenado por `id` para evitar deadlock) antes de verificar a regra. As conclusões de uma mesma OS são serializadas, e a última sempre vê as anteriores e publica um único evento.
+**Concorrência:** sem cuidado, as duas últimas execuções concluídas ao mesmo tempo não enxergariam uma à outra, nenhuma publicaria o evento e a OS ficaria parada (o monolito tinha esse risco). Por isso, a conclusão trava todas as execuções da OS com `SELECT ... FOR UPDATE` (`lockAllFromSameServiceOrder`, ordenado por `id` para evitar deadlock) antes de verificar a regra. As conclusões de uma mesma OS são serializadas, e a última sempre vê as anteriores e publica um único evento.
 
 #### `AllExecutionsCancelled`
 

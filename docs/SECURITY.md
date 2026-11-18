@@ -19,9 +19,9 @@ A estrutura segue a do core: `SecurityConfig` stateless, filtro `JwtAuthFilter`,
 
 Os tokens de cliente, emitidos pela Lambda de autenticação por CPF (`iss = techchallenge-ofisy-auth`), são recusados com 401, assim como acontece no core.
 
-### Pré-requisito no core
+### Claim `role`
 
-No core, a role não fica no token: ela é buscada no banco a cada requisição, pelo `OfisyUserDetailsService`. Para este ms conseguir autorizar sem acessar esse banco, o core precisa incluir a claim `role` ao gerar o token (`JwtService.generateToken`). Um token sem a claim `role` é aceito como autenticado, mas sem nenhuma role, e por isso recebe 403 em todas as rotas.
+O core grava a role do usuário na claim `role` ao gerar o token (`JwtService.generateToken`). É ela que permite a este ms autorizar a requisição sem acessar o banco de usuários do core. Um token sem a claim `role` é aceito como autenticado, mas sem nenhuma role, e por isso recebe 403 em todas as rotas.
 
 ### Usuário inativo
 
